@@ -76,6 +76,18 @@
             70% { transform: scale(1.5); box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
             100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
         }
+        
+        /* โหมดเต็มหน้าจอสำหรับการนำทาง */
+        .map-fullscreen {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 9999 !important;
+            border-radius: 0 !important;
+            margin: 0 !important;
+        }
     </style>
 </head>
 <body class="text-slate-800 antialiased min-h-screen flex flex-col">
@@ -308,7 +320,7 @@
 
             <!-- Right Column: Map -->
             <div class="lg:col-span-8 flex flex-col">
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-[500px] lg:h-full min-h-[500px] relative">
+                <div id="mapWrapper" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-[500px] lg:h-full min-h-[500px] relative transition-all duration-300">
                     
                     <!-- Map Controls overlay -->
                     <div class="absolute top-4 right-4 z-[400] flex gap-2">
@@ -1232,6 +1244,12 @@
             // ปิด Popup
             map.closePopup();
             
+            // ขยายแผนที่เต็มหน้าจอ (เพิ่ม Class)
+            document.getElementById('mapWrapper').classList.add('map-fullscreen');
+            
+            // สั่งให้ Leaflet คำนวณขนาดแผนที่ใหม่หลังจากขยายหน้าจอ เพื่อป้องกันภาพแหว่ง
+            setTimeout(() => { map.invalidateSize(); }, 300);
+            
             navTargetLatLng = L.latLng(lat, lng);
             
             // แสดง UI ควบคุมการนำทาง
@@ -1339,6 +1357,12 @@
             }
             
             map.off('dragstart', disableAutoPan);
+            
+            // ยกเลิกขยายหน้าจอแผนที่
+            document.getElementById('mapWrapper').classList.remove('map-fullscreen');
+            
+            // สั่งให้ Leaflet คำนวณขนาดแผนที่ใหม่หลังจากย่อหน้าจอ
+            setTimeout(() => { map.invalidateSize(); }, 300);
             
             // ซ่อนกล่อง UI
             document.getElementById('navControl').classList.add('hidden');
