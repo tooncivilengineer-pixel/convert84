@@ -1,0 +1,1327 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบแปลงพิกัด Indian 1975 เป็น WGS 1984</title>
+    
+    <!-- Google Fonts: Noto Sans Thai -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Noto Sans Thai"', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Leaflet CSS for Maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    
+    <!-- Proj4js for Coordinate Transformation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+    
+    <!-- PapaParse for CSV processing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <style>
+        body { background-color: #f8fafc; }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        #map { z-index: 10; }
+        .input-group { position: relative; }
+        .input-group input { padding-left: 2.5rem; }
+        .input-icon {
+            position: absolute;
+            left: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #64748b;
+        }
+
+        /* User Location Pulsing Dot */
+        .pulsating-dot {
+            width: 16px;
+            height: 16px;
+            background-color: #3b82f6;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+            animation: pulsate 1.5s infinite ease-out;
+        }
+        @keyframes pulsate {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+            70% { transform: scale(1.5); box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+    </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
+
+    <!-- Navbar -->
+    <nav class="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center gap-3">
+                    <div class="bg-brand-100 p-2 rounded-lg text-brand-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-lg font-bold text-slate-900 leading-tight">Thai Coordinate Converter</h1>
+                        <p class="text-xs text-slate-500">Indian 1975 ➔ WGS 1984</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+        
+        <!-- Grid Layout -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            <!-- Left Column: Controls & Inputs -->
+            <div class="lg:col-span-4 flex flex-col gap-6">
+                
+                <div class="flex bg-slate-200 p-1 rounded-xl">
+                    <button id="tabSingleBtn" class="flex-1 py-2 px-2 sm:px-4 rounded-lg text-sm font-medium bg-white text-slate-800 shadow-sm transition-all whitespace-nowrap" onclick="switchTab('single')">แปลงจุดเดียว</button>
+                    <button id="tabCsvBtn" class="flex-1 py-2 px-2 sm:px-4 rounded-lg text-sm font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-all whitespace-nowrap" onclick="switchTab('csv')">นำเข้าไฟล์</button>
+                    <button id="tabProjectsBtn" class="flex-1 py-2 px-2 sm:px-4 rounded-lg text-sm font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-all whitespace-nowrap" onclick="switchTab('projects')">โครงการ</button>
+                </div>
+
+                <!-- Tab Content: Single Input -->
+                <div id="tabSingle">
+                    <!-- Input Card -->
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                        <h2 class="text-base font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-brand-500" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd" />
+                            </svg>
+                            กรอกพิกัด Indian 1975 (UTM)
+                        </h2>
+                        
+                        <form id="convertForm" class="flex flex-col gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">UTM Zone (โซน)</label>
+                                <select id="utmZone" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-lg focus:ring-brand-500 focus:border-brand-500 block p-2.5 outline-none transition-colors">
+                                    <option value="47">Zone 47N</option>
+                                    <option value="48">Zone 48N</option>
+                                </select>
+                            </div>
+                            
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">X (Easting)</label>
+                                    <input type="text" id="inputX" required placeholder="เช่น 650000" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-lg focus:ring-brand-500 focus:border-brand-500 block p-2.5 outline-none transition-colors">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Y (Northing)</label>
+                                    <input type="text" id="inputY" required placeholder="เช่น 1500000" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-lg focus:ring-brand-500 focus:border-brand-500 block p-2.5 outline-none transition-colors">
+                                </div>
+                            </div>
+
+                            <button type="submit" class="w-full mt-2 bg-brand-600 hover:bg-brand-700 text-white font-medium py-2.5 px-4 rounded-lg transition-colors shadow-sm">
+                                แปลงพิกัดเป็น WGS 1984
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Tab Content: CSV Import -->
+                <div id="tabCsv" class="hidden flex flex-col gap-4">
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                        <h2 class="text-base font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            ระบบแปลงพิกัดแบบชุด (Batch)
+                        </h2>
+                        
+                        <div class="mb-5 text-sm text-slate-600 bg-slate-50 p-4 rounded-lg border border-slate-100">
+                            <p class="font-semibold text-slate-700 mb-2">รูปแบบไฟล์ CSV ที่รองรับ (Header):</p>
+                            <code class="block bg-slate-200 text-slate-800 p-2 rounded text-xs font-mono">name, zone, easting, northing</code>
+                            <div class="mt-3">
+                                <a href="#" onclick="downloadTemplate()" class="text-brand-600 hover:text-brand-700 font-medium hover:underline text-xs flex items-center gap-1">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                    ดาวน์โหลดไฟล์ต้นแบบ
+                                </a>
+                            </div>
+                        </div>
+
+                        <div class="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center hover:bg-brand-50 hover:border-brand-300 transition-colors cursor-pointer relative" id="dropZone">
+                            <input type="file" id="csvFileInput" accept=".csv" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-slate-400 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                            </svg>
+                            <span class="text-sm text-slate-600 font-medium block">คลิกเพื่อเลือกไฟล์ CSV หรือลากไฟล์มาวาง</span>
+                            <span class="text-xs text-slate-400 mt-1 block">รองรับไฟล์ .csv เท่านั้น</span>
+                        </div>
+                        
+                        <div id="csvSummary" class="hidden mt-4 p-3 rounded-lg text-sm bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-start gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-emerald-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            <div>
+                                <div class="font-bold">แปลงพิกัดสำเร็จ <span id="csvSuccessCount">0</span> จุด</div>
+                                <div class="text-xs text-emerald-600/80 mt-0.5">ข้ามแถวที่ข้อมูลไม่ถูกต้อง <span id="csvErrorCount">0</span> แถว</div>
+                            </div>
+                        </div>
+
+                        <div id="areaSummary" class="hidden mt-4 p-4 rounded-xl text-sm bg-blue-50 border border-blue-200 text-blue-800 shadow-sm relative overflow-hidden">
+                            <div class="absolute -right-4 -top-4 text-blue-100 opacity-50">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-24 w-24" fill="currentColor" viewBox="0 0 24 24"><path d="M3 3v18h18V3H3zm16 16H5V5h14v14zm-7-7l4-4 2 2-6 6-4-4 2-2 2 2z"/></svg>
+                            </div>
+                            <h3 class="font-semibold flex items-center gap-2 mb-2 text-blue-900 relative z-10">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+                                เนื้อที่รูปแปลง (คำนวณจากขอบเขต)
+                            </h3>
+                            <div class="grid grid-cols-2 gap-4 relative z-10">
+                                <div class="bg-white/70 p-2.5 rounded border border-blue-100">
+                                    <div class="text-xs text-blue-600 mb-1">หน่วยไทย (ไร่-งาน-ตร.ว.)</div>
+                                    <div class="font-bold text-base" id="areaThaiResult">-</div>
+                                </div>
+                                <div class="bg-white/70 p-2.5 rounded border border-blue-100">
+                                    <div class="text-xs text-blue-600 mb-1">ตารางเมตร (Sq.m.)</div>
+                                    <div class="font-bold text-base" id="areaSqmResult">-</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="actionButtons" class="hidden mt-4 flex gap-2">
+                            <button id="saveProjectBtn" class="flex-1 bg-brand-600 hover:bg-brand-700 text-white font-medium py-3 px-2 rounded-lg transition-all duration-200 flex items-center justify-center gap-1.5 shadow-sm text-sm" onclick="openSaveModal()">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                                </svg>
+                                บันทึกโครงการ
+                            </button>
+                            <button id="exportCsvBtn" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-3 px-2 rounded-lg transition-all duration-200 flex items-center justify-center gap-1.5 shadow-sm text-sm" onclick="exportResults()">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                </svg>
+                                ดาวน์โหลด
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab Content: Projects (New) -->
+                <div id="tabProjects" class="hidden flex flex-col gap-4">
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 min-h-[400px]">
+                        <h2 class="text-base font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                            </svg>
+                            โครงการที่บันทึกไว้
+                        </h2>
+                        
+                        <div id="projectsList" class="space-y-3 overflow-y-auto max-h-[500px] pr-2">
+                            <!-- Projects will be injected here -->
+                            <div class="text-center text-slate-500 py-8 text-sm flex flex-col items-center">
+                                <svg class="animate-spin h-6 w-6 text-brand-500 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                กำลังตรวจสอบข้อมูล...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Error Message Box -->
+                <div id="errorBox" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm flex items-start gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                    </svg>
+                    <span id="errorMessage">เกิดข้อผิดพลาดในการตรวจสอบข้อมูล</span>
+                </div>
+
+                <!-- Result Card (Hidden by default) -->
+                <div id="resultCard" class="hidden bg-white rounded-2xl shadow-sm border border-brand-200 p-0 overflow-hidden transition-all duration-300">
+                    <div class="bg-brand-50 p-4 border-b border-brand-100 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-brand-600" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                        </svg>
+                        <h2 class="text-base font-semibold text-brand-800">ผลลัพธ์ (WGS 1984)</h2>
+                    </div>
+                    <div class="p-4 space-y-4">
+                        
+                        <!-- WGS84 Geographic -->
+                        <div>
+                            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Latitude / Longitude</h3>
+                            <div class="bg-slate-50 p-3 rounded-lg border border-slate-100 flex justify-between items-center group relative">
+                                <div>
+                                    <div class="text-sm text-slate-800 font-mono" id="resLat">Lat: -</div>
+                                    <div class="text-sm text-slate-800 font-mono" id="resLng">Lon: -</div>
+                                </div>
+                                <button onclick="copyText('resLatLngCombo')" class="text-slate-400 hover:text-brand-600 p-2 rounded-md hover:bg-white transition-colors" title="คัดลอก">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                    </svg>
+                                </button>
+                                <!-- Hidden combo text for copy -->
+                                <input type="hidden" id="resLatLngCombo">
+                            </div>
+                        </div>
+
+                        <!-- WGS84 UTM -->
+                        <div>
+                            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">UTM Coordinates</h3>
+                            <div class="bg-slate-50 p-3 rounded-lg border border-slate-100 flex justify-between items-center">
+                                <div>
+                                    <div class="text-sm text-slate-800 font-mono"><span class="text-slate-500">Zone:</span> <span id="resZone">-</span></div>
+                                    <div class="text-sm text-slate-800 font-mono"><span class="text-slate-500">E:</span> <span id="resEasting">-</span></div>
+                                    <div class="text-sm text-slate-800 font-mono"><span class="text-slate-500">N:</span> <span id="resNorthing">-</span></div>
+                                </div>
+                                <button onclick="copyText('resUtmCombo')" class="text-slate-400 hover:text-brand-600 p-2 rounded-md hover:bg-white transition-colors" title="คัดลอก">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                    </svg>
+                                </button>
+                                <!-- Hidden combo text for copy -->
+                                <input type="hidden" id="resUtmCombo">
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Map -->
+            <div class="lg:col-span-8 flex flex-col">
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-[500px] lg:h-full min-h-[500px] relative">
+                    
+                    <!-- Map Controls overlay -->
+                    <div class="absolute top-4 right-4 z-[400] flex gap-2">
+                        <div class="bg-white/90 backdrop-blur text-xs font-medium px-3 py-1.5 rounded-lg shadow-sm border border-slate-200 text-slate-600 pointer-events-none">
+                            แผนที่แสดงจุดพิกัด (WGS84)
+                        </div>
+                    </div>
+
+                    <!-- Navigation Distance Display -->
+                    <div id="distanceDisplay" class="hidden absolute top-4 left-1/2 transform -translate-x-1/2 z-[400] bg-white/95 backdrop-blur text-brand-800 text-sm font-bold px-4 py-2 rounded-xl shadow-md border border-brand-200 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-brand-600" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd" />
+                        </svg>
+                        ระยะทาง: <span id="distVal" class="text-brand-600 text-lg">...</span> ม.
+                    </div>
+
+                    <!-- Navigation Stop Button -->
+                    <button id="navControl" class="hidden absolute bottom-6 left-1/2 transform -translate-x-1/2 z-[400] bg-red-500 text-white px-5 py-2.5 rounded-full shadow-lg flex items-center gap-2 cursor-pointer hover:bg-red-600 transition-colors font-medium text-sm" onclick="stopNavigation()">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                        ยกเลิกการนำทาง
+                    </button>
+
+                    <!-- Map Container -->
+                    <div id="map" class="flex-grow w-full h-full bg-slate-100"></div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Modals (Save & Delete) -->
+    <!-- Save Modal -->
+    <div id="saveProjectModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[500] hidden items-center justify-center transition-opacity">
+        <div class="bg-white rounded-2xl p-6 w-[90%] max-w-md shadow-xl border border-slate-200">
+            <h3 class="text-lg font-bold mb-4 text-slate-800 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-brand-600" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M7.707 10.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V6h5a2 2 0 012 2v7a2 2 0 01-2 2H4a2 2 0 01-2-2V8a2 2 0 012-2h5v5.586l-1.293-1.293zM9 4a1 1 0 012 0v2H9V4z" />
+                </svg>
+                บันทึกเป็นโครงการใหม่
+            </h3>
+            <label class="block text-sm font-medium text-slate-700 mb-1">ชื่อโครงการ</label>
+            <input type="text" id="projectNameInput" placeholder="ตั้งชื่อโครงการ..." class="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg focus:ring-brand-500 focus:border-brand-500 p-2.5 mb-5 outline-none">
+            <div class="flex justify-end gap-3">
+                <button onclick="closeSaveModal()" class="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">ยกเลิก</button>
+                <button id="confirmSaveBtn" onclick="confirmSaveProject()" class="px-4 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg shadow-sm transition-colors">บันทึกข้อมูล</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirm Modal -->
+    <div id="deleteModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[500] hidden items-center justify-center transition-opacity">
+        <div class="bg-white rounded-2xl p-6 w-[90%] max-w-sm shadow-xl text-center border border-slate-200">
+            <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+                <svg class="h-6 w-6 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+            </div>
+            <h3 class="text-lg font-bold mb-2 text-slate-800">ยืนยันการลบโครงการ</h3>
+            <p class="text-slate-500 text-sm mb-6">คุณแน่ใจหรือไม่ว่าต้องการลบโครงการนี้? ข้อมูลจะไม่สามารถกู้คืนได้</p>
+            <div class="flex justify-center gap-3">
+                <button onclick="closeDeleteModal()" class="px-4 py-2.5 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors w-full">ยกเลิก</button>
+                <button id="confirmDeleteBtn" class="px-4 py-2.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm transition-colors w-full">ลบทิ้ง</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-4 right-4 bg-slate-800 text-white px-4 py-3 rounded-lg shadow-lg text-sm font-medium transform translate-y-20 opacity-0 transition-all duration-300 z-50 flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+        </svg>
+        คัดลอกไปยังคลิปบอร์ดแล้ว
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <!-- Firebase Setup -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDxFfXCG5looRXmriLgGmCSHDpo2_6voBU",
+            authDomain: "toon-civil-gis.firebaseapp.com",
+            projectId: "toon-civil-gis",
+            storageBucket: "toon-civil-gis.firebasestorage.app",
+            messagingSenderId: "795968328879",
+            appId: "1:795968328879:web:b494aec8fdab277453f05a",
+            measurementId: "G-WYZCPFCP8L"
+        };
+
+        // Initialize Firebase App
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // Authenticate anonymously before using any database features
+        signInAnonymously(auth).then(() => {
+            console.log("Firebase 연결สำเร็จ (Authenticated Anonymously)");
+            // Expose to global window scope for standard scripts to access
+            window.db = db;
+            window.auth = auth;
+            window.userId = auth.currentUser.uid;
+            
+            // Standardize appId fetching
+            window.appId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.appId;
+
+            // Expose required firestore methods
+            window.fs = { collection, addDoc, onSnapshot, deleteDoc, doc, query };
+            
+            // Call the init function for projects list
+            if(typeof window.initProjects === 'function') {
+                window.initProjects();
+            }
+            
+        }).catch((error) => {
+            console.error("เกิดข้อผิดพลาดในการเชื่อมต่อ Firebase:", error);
+            document.getElementById('projectsList').innerHTML = '<div class="text-center text-red-500 py-8 text-sm">ไม่สามารถเชื่อมต่อฐานข้อมูลได้</div>';
+        });
+    </script>
+
+    <script>
+        // ---------------------------------------------------------
+        // 1. กำหนดค่าพารามิเตอร์ของระบบพิกัด (Proj4 Definitions)
+        // ---------------------------------------------------------
+        
+        // WGS 1984 (EPSG:4326) มีอยู่ในตัว Proj4js แล้ว ไม่ต้องประกาศเพิ่ม
+        
+        // Indian 1975 UTM Zone 47N (EPSG:24047)
+        // Parameters: Everest 1830 ellipsoid, 3-parameter datum shift to WGS84 (+209, +818, +290)
+        proj4.defs("EPSG:24047", "+proj=utm +zone=47 +a=6377276.345 +b=6356075.41314024 +towgs84=209,818,290,0,0,0,0 +units=m +no_defs");
+        
+        // Indian 1975 UTM Zone 48N (EPSG:24048)
+        proj4.defs("EPSG:24048", "+proj=utm +zone=48 +a=6377276.345 +b=6356075.41314024 +towgs84=209,818,290,0,0,0,0 +units=m +no_defs");
+
+        // WGS 1984 UTM Zone 47N (EPSG:32647)
+        proj4.defs("EPSG:32647", "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs");
+        
+        // WGS 1984 UTM Zone 48N (EPSG:32648)
+        proj4.defs("EPSG:32648", "+proj=utm +zone=48 +datum=WGS84 +units=m +no_defs");
+
+        // ---------------------------------------------------------
+        // 2. การตั้งค่าแผนที่ (Leaflet Setup)
+        // ---------------------------------------------------------
+        let map;
+        let marker;
+        let markersGroup; // กลุ่ม Marker สำหรับโหลด CSV หลายจุด
+        let polygonLayer; // เลเยอร์สำหรับวาดรูปแปลงที่ดิน
+
+        // สร้างไอคอนขนาดเล็ก (Small Icon) สำหรับหมุด
+        const smallIcon = L.icon({
+            iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+            iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+            shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+            iconSize: [18, 29],       // ลดขนาดจากเดิม [25, 41]
+            iconAnchor: [9, 29],      // จุดยึดที่ฐานหมุด
+            popupAnchor: [1, -25],    // จุดแสดง popup ด้านบน
+            shadowSize: [29, 29],     // ลดขนาดเงาจากเดิม [41, 41]
+            shadowAnchor: [9, 29]
+        });
+
+        // Initialize Map
+        document.addEventListener('DOMContentLoaded', () => {
+            // ตั้งค่าจุดศูนย์กลางเริ่มต้นที่ประเทศไทย (พิษณุโลก/ภาคกลาง)
+            map = L.map('map').setView([16.8, 100.2], 6);
+            
+            // 1. กำหนดชั้นข้อมูลแผนที่แบบต่างๆ (Base Maps)
+            // แผนที่ถนน (OpenStreetMap)
+            const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            });
+
+            // ภาพถ่ายดาวเทียมพร้อมชื่อถนน (Google Satellite Hybrid)
+            const satelliteLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+                attribution: '&copy; Google Maps',
+                maxZoom: 20
+            });
+
+            // กำหนดให้ OSM เป็นแผนที่เริ่มต้น
+            osmLayer.addTo(map);
+
+            // 2. สร้างกล่องควบคุมสำหรับสลับเลเยอร์แผนที่ (มุมซ้ายบน)
+            const baseMaps = {
+                "แผนที่ถนน (OSM)": osmLayer,
+                "ภาพถ่ายดาวเทียม (Google)": satelliteLayer
+            };
+
+            L.control.layers(baseMaps, null, { position: 'topleft' }).addTo(map);
+
+            // 3. สร้างกลุ่มสำหรับใส่ Marker
+            markersGroup = L.featureGroup().addTo(map);
+        });
+
+        // ---------------------------------------------------------
+        // 3. ฟังก์ชันประมวลผลเมื่อกดปุ่มแปลงพิกัด
+        // ---------------------------------------------------------
+        document.getElementById('convertForm').addEventListener('submit', function(e) {
+            e.preventDefault(); // ป้องกันหน้าเว็บรีเฟรช
+            
+            const errorBox = document.getElementById('errorBox');
+            const resultCard = document.getElementById('resultCard');
+            
+            // ซ่อนกล่องแจ้งเตือนเก่า
+            errorBox.classList.add('hidden');
+            
+            // ดึงข้อมูลและทำความสะอาด (เผื่อผู้ใช้ใส่ลูกน้ำ ,)
+            const zone = document.getElementById('utmZone').value;
+            const inputXStr = document.getElementById('inputX').value.replace(/,/g, '').trim();
+            const inputYStr = document.getElementById('inputY').value.replace(/,/g, '').trim();
+
+            const x = parseFloat(inputXStr);
+            const y = parseFloat(inputYStr);
+
+            // ตรวจสอบความถูกต้องของตัวเลข
+            if (isNaN(x) || isNaN(y)) {
+                showError('กรุณากรอกตัวเลขที่ถูกต้อง');
+                return;
+            }
+
+            // ตรวจสอบความสมเหตุสมผลของพิกัด UTM คร่าวๆ
+            // ประเทศไทย ค่า X ประมาณ 200000 - 800000, Y ประมาณ 600000 - 2300000
+            if (x < 100000 || x > 999999 || y < 0 || y > 10000000) {
+                showError('ค่าพิกัดไม่อยู่ในขอบเขต UTM ที่ถูกต้อง');
+                return;
+            }
+
+            try {
+                // เลือก EPSG ต้นทางและปลายทางตามโซน
+                const sourceEpsg = zone === '47' ? 'EPSG:24047' : 'EPSG:24048'; // Indian 1975
+                const targetUtmEpsg = zone === '47' ? 'EPSG:32647' : 'EPSG:32648'; // WGS 84 UTM
+                const targetGeoEpsg = 'EPSG:4326'; // WGS 84 Lat/Lon
+
+                // สร้าง Array ของพิกัด [X, Y]
+                const coords = [x, y];
+
+                // 1. แปลงเป็น Latitude / Longitude (WGS84)
+                // Proj4 ส่งคืนค่าเป็น [Longitude, Latitude]
+                const wgsGeo = proj4(sourceEpsg, targetGeoEpsg, coords);
+                const lng = wgsGeo[0];
+                const lat = wgsGeo[1];
+
+                // 2. แปลงเป็น UTM (WGS84)
+                const wgsUtm = proj4(sourceEpsg, targetUtmEpsg, coords);
+                const utmEasting = wgsUtm[0];
+                const utmNorthing = wgsUtm[1];
+
+                // แสดงผลลัพธ์
+                displayResults(lat, lng, utmEasting, utmNorthing, zone);
+                
+                // อัปเดตแผนที่
+                updateMap(lat, lng);
+
+                // แสดง Card ผลลัพธ์
+                resultCard.classList.remove('hidden');
+                
+            } catch (err) {
+                console.error(err);
+                showError('เกิดข้อผิดพลาดในการคำนวณ โปรดตรวจสอบพิกัดอีกครั้ง');
+            }
+        });
+
+        // ---------------------------------------------------------
+        // 4. ฟังก์ชันช่วยเหลือ (Helper Functions)
+        // ---------------------------------------------------------
+        
+        function showError(message) {
+            const errorBox = document.getElementById('errorBox');
+            document.getElementById('errorMessage').innerText = message;
+            errorBox.classList.remove('hidden');
+            document.getElementById('resultCard').classList.add('hidden');
+        }
+
+        function displayResults(lat, lng, utmE, utmN, zone) {
+            // ตัดทศนิยมให้เหมาะสม
+            const formattedLat = lat.toFixed(6);
+            const formattedLng = lng.toFixed(6);
+            const formattedUtmE = utmE.toFixed(3);
+            const formattedUtmN = utmN.toFixed(3);
+
+            // อัปเดต UI text
+            document.getElementById('resLat').innerText = `Lat: ${formattedLat}`;
+            document.getElementById('resLng').innerText = `Lon: ${formattedLng}`;
+            document.getElementById('resZone').innerText = `${zone}N`;
+            document.getElementById('resEasting').innerText = `${formattedUtmE}`;
+            document.getElementById('resNorthing').innerText = `${formattedUtmN}`;
+
+            // อัปเดต Hidden input สำหรับให้ปุ่ม Copy ทำงาน
+            document.getElementById('resLatLngCombo').value = `${formattedLat}, ${formattedLng}`;
+            document.getElementById('resUtmCombo').value = `${zone}N ${formattedUtmE} ${formattedUtmN}`;
+        }
+
+        function updateMap(lat, lng) {
+            const newLatLng = new L.LatLng(lat, lng);
+
+            // ถ้ามีหมุดเก่าอยู่แล้ว ให้ลบออกก่อน
+            if (marker) {
+                map.removeLayer(marker);
+            }
+            
+            // เคลียร์หมุดจากการโหลด CSV ก่อนหน้า (ถ้ามี)
+            markersGroup.clearLayers();
+
+            // เพิ่มหมุดใหม่พร้อมไอคอนขนาดเล็ก
+            marker = L.marker(newLatLng, { icon: smallIcon }).addTo(map);
+            
+            // ใส่ Popup พร้อมปุ่มนำทาง
+            marker.bindPopup(`
+                <div class="text-sm font-sans min-w-[140px]">
+                    <b class="text-slate-800">พิกัด WGS84</b><br>
+                    <span class="text-slate-600">Lat: ${lat.toFixed(5)}</span><br>
+                    <span class="text-slate-600">Lon: ${lng.toFixed(5)}</span><br>
+                    <button onclick="startNavigation(${lat}, ${lng}, 'เป้าหมาย')" class="mt-3 w-full bg-brand-600 hover:bg-brand-700 text-white px-2 py-1.5 rounded-md text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg> นำทางไปจุดนี้
+                    </button>
+                </div>
+            `).openPopup();
+
+            // เลื่อนแผนที่ไปหาหมุดแบบสมูท (Zoom level 14)
+            map.flyTo(newLatLng, 14, {
+                animate: true,
+                duration: 1.5
+            });
+        }
+
+        function copyText(inputId) {
+            const copyText = document.getElementById(inputId);
+            
+            // สร้าง element ชั่วคราวเพื่อ copy หาก element เป็น hidden
+            const tempInput = document.createElement("input");
+            tempInput.value = copyText.value;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            
+            try {
+                // ใช้ document.execCommand (รองรับใน iframe / canvas ได้ดีกว่า clipboard API ในบางกรณี)
+                document.execCommand("copy");
+                showToast("คัดลอกพิกัดไปยังคลิปบอร์ดแล้ว");
+            } catch (err) {
+                console.error("Failed to copy", err);
+            }
+            
+            document.body.removeChild(tempInput);
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            if(message) {
+                toast.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    ${message}
+                `;
+            }
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        // ---------------------------------------------------------
+        // 5. ระบบแปลงพิกัดด้วยไฟล์ CSV (Batch Conversion) และ การจัดการโครงการ
+        // ---------------------------------------------------------
+        let csvResults = [];
+        let loadedProjects = []; // เก็บโครงการที่โหลดมาจากฐานข้อมูล
+
+        function switchTab(tab) {
+            const btnSingle = document.getElementById('tabSingleBtn');
+            const btnCsv = document.getElementById('tabCsvBtn');
+            const btnProjects = document.getElementById('tabProjectsBtn');
+            
+            const contentSingle = document.getElementById('tabSingle');
+            const contentCsv = document.getElementById('tabCsv');
+            const contentProjects = document.getElementById('tabProjects');
+            
+            const resultCard = document.getElementById('resultCard');
+            const errorBox = document.getElementById('errorBox');
+            
+            const activeClass = "flex-1 py-2 px-2 sm:px-4 rounded-lg text-sm font-medium bg-white text-slate-800 shadow-sm transition-all whitespace-nowrap";
+            const inactiveClass = "flex-1 py-2 px-2 sm:px-4 rounded-lg text-sm font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-all whitespace-nowrap";
+
+            errorBox.classList.add('hidden');
+            resultCard.classList.add('hidden');
+            
+            // Reset styles
+            btnSingle.className = inactiveClass;
+            btnCsv.className = inactiveClass;
+            btnProjects.className = inactiveClass;
+            
+            contentSingle.classList.add('hidden');
+            contentCsv.classList.add('hidden');
+            contentProjects.classList.add('hidden');
+
+            if (tab === 'single') {
+                btnSingle.className = activeClass;
+                contentSingle.classList.remove('hidden');
+                
+                // Clear CSV specific elements but keep map view if they generated one recently
+                document.getElementById('actionButtons').classList.add('hidden');
+                document.getElementById('csvSummary').classList.add('hidden');
+                document.getElementById('areaSummary').classList.add('hidden');
+                
+            } else if (tab === 'csv') {
+                btnCsv.className = activeClass;
+                contentCsv.classList.remove('hidden');
+                
+                // If there's already converted CSV data, make sure buttons show
+                if(csvResults.length > 0) {
+                    document.getElementById('actionButtons').classList.remove('hidden');
+                    document.getElementById('csvSummary').classList.remove('hidden');
+                    if(csvResults.length >= 3) document.getElementById('areaSummary').classList.remove('hidden');
+                }
+                
+            } else if (tab === 'projects') {
+                btnProjects.className = activeClass;
+                contentProjects.classList.remove('hidden');
+            }
+        }
+
+        function downloadTemplate() {
+            // สร้างไฟล์เทมเพลต CSV
+            const csvContent = "data:text/csv;charset=utf-8,name,zone,easting,northing\nPoint_A,47,650000,1500000\nPoint_B,47,660000,1510000\nPoint_C,48,250000,1650000";
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "template_indian1975.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // ฟังก์ชันคำนวณเนื้อที่รูปหลายเหลี่ยมด้วย Shoelace Formula (ใช้หน่วยเมตรจาก UTM)
+        function calculatePolygonArea(vertices) {
+            let area = 0;
+            let j = vertices.length - 1;
+            for (let i = 0; i < vertices.length; i++) {
+                area += (vertices[j].x * vertices[i].y) - (vertices[i].x * vertices[j].y);
+                j = i;
+            }
+            return Math.abs(area / 2);
+        }
+
+        // ฟังก์ชันแปลงตารางเมตรเป็น ไร่-งาน-ตารางวา
+        function formatThaiArea(sqm) {
+            const rai = Math.floor(sqm / 1600);
+            const remainder = sqm % 1600;
+            const ngan = Math.floor(remainder / 400);
+            const sqwa = (remainder % 400) / 4;
+            
+            let result = "";
+            if (rai > 0) result += `${rai} ไร่ `;
+            if (ngan > 0) result += `${ngan} งาน `;
+            result += `${sqwa.toFixed(1)} ตร.ว.`;
+            
+            return result === "" ? "0 ตร.ว." : result.trim();
+        }
+
+        // จัดการเมื่อมีการเลือกไฟล์ CSV
+        const fileInput = document.getElementById('csvFileInput');
+        if(fileInput) {
+            fileInput.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                // ใช้ PapaParse อ่านไฟล์ CSV
+                Papa.parse(file, {
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: function(results) {
+                        processCSV(results.data);
+                    },
+                    error: function(err) {
+                        showError("ไม่สามารถอ่านไฟล์ CSV ได้: " + err.message);
+                    }
+                });
+            });
+        }
+
+        function processCSV(data) {
+            csvResults = [];
+            let utmPoints = []; // เก็บพิกัด UTM (เมตร) เพื่อเตรียมคำนวณเนื้อที่
+            
+            markersGroup.clearLayers();
+            if(marker) map.removeLayer(marker);
+            if(polygonLayer) map.removeLayer(polygonLayer);
+            
+            let errorCount = 0;
+            let successCount = 0;
+
+            // วนลูปอ่านข้อมูลทีละแถว
+            data.forEach((row, index) => {
+                const name = row.name || `Point_${index + 1}`;
+                const zone = String(row.zone).trim();
+                const x = parseFloat(row.easting);
+                const y = parseFloat(row.northing);
+
+                // ข้ามแถวที่ข้อมูลไม่ครบหรือไม่ถูกต้อง
+                if (isNaN(x) || isNaN(y) || (zone !== '47' && zone !== '48')) {
+                    errorCount++;
+                    return;
+                }
+
+                try {
+                    const sourceEpsg = zone === '47' ? 'EPSG:24047' : 'EPSG:24048';
+                    const targetUtmEpsg = zone === '47' ? 'EPSG:32647' : 'EPSG:32648';
+                    const targetGeoEpsg = 'EPSG:4326';
+                    const coords = [x, y];
+
+                    // คำนวณแปลงพิกัดด้วย Proj4js
+                    const wgsGeo = proj4(sourceEpsg, targetGeoEpsg, coords);
+                    const wgsUtm = proj4(sourceEpsg, targetUtmEpsg, coords);
+
+                    const lat = wgsGeo[1];
+                    const lng = wgsGeo[0];
+                    const utmEasting = wgsUtm[0];
+                    const utmNorthing = wgsUtm[1];
+
+                    // เก็บพิกัด UTM เพื่อนำไปคำนวณเนื้อที่ด้วย Shoelace Formula
+                    utmPoints.push({ x: utmEasting, y: utmNorthing });
+
+                    // เก็บลง Array เพื่อเตรียมส่งออก
+                    csvResults.push({
+                        Name: name,
+                        "Indian_Zone": zone,
+                        "Indian_E": x,
+                        "Indian_N": y,
+                        "WGS84_Lat": lat.toFixed(6),
+                        "WGS84_Lon": lng.toFixed(6),
+                        "WGS84_UTM_Zone": zone,
+                        "WGS84_UTM_E": utmEasting.toFixed(3),
+                        "WGS84_UTM_N": utmNorthing.toFixed(3)
+                    });
+
+                    const safeName = name.replace(/'/g, "\\'");
+                    
+                    const popupContent = `
+                        <div class="text-sm font-sans min-w-[140px]">
+                            <b class="text-slate-800">${name}</b><br>
+                            <span class="text-slate-600">Lat: ${lat.toFixed(6)}</span><br>
+                            <span class="text-slate-600">Lon: ${lng.toFixed(6)}</span><br>
+                            <button onclick="startNavigation(${lat}, ${lng}, '${safeName}')" class="mt-3 w-full bg-brand-600 hover:bg-brand-700 text-white px-2 py-1.5 rounded-md text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg> นำทางไปจุดนี้
+                            </button>
+                        </div>
+                    `;
+
+                    // สร้าง Marker ปักบนแผนที่พร้อมไอคอนขนาดเล็ก
+                    const pointMarker = L.marker([lat, lng], { icon: smallIcon }).bindPopup(popupContent);
+                    markersGroup.addLayer(pointMarker);
+                    
+                    successCount++;
+
+                } catch (err) {
+                    errorCount++;
+                }
+            });
+
+            const summaryBox = document.getElementById('csvSummary');
+            const exportBtn = document.getElementById('exportCsvBtn');
+            const actionButtons = document.getElementById('actionButtons');
+            const areaSummary = document.getElementById('areaSummary');
+
+            if (successCount > 0) {
+                // ขยับมุมกล้องแผนที่ให้ครอบคลุมจุดทั้งหมด
+                map.fitBounds(markersGroup.getBounds(), { padding: [50, 50] });
+                
+                actionButtons.classList.remove('hidden');
+                summaryBox.classList.remove('hidden');
+                
+                document.getElementById('csvSuccessCount').innerText = successCount;
+                document.getElementById('csvErrorCount').innerText = errorCount;
+                document.getElementById('errorBox').classList.add('hidden');
+                
+                // ถ้านำเข้าพิกัด 3 จุดขึ้นไป (ประกอบเป็นรูปหลายเหลี่ยมได้)
+                if (successCount >= 3) {
+                    // สร้าง Array พิกัด Lat/Lon เพื่อวาดโพลิกอน
+                    const latlngs = csvResults.map(p => [parseFloat(p.WGS84_Lat), parseFloat(p.WGS84_Lon)]);
+                    
+                    // วาดรูปแปลงที่ดินลงบนแผนที่
+                    polygonLayer = L.polygon(latlngs, {
+                        color: '#2563eb',     // สีขอบ (Brand Blue)
+                        weight: 2,
+                        fillColor: '#60a5fa', // สีพื้นหลัง
+                        fillOpacity: 0.25
+                    }).addTo(map);
+
+                    // คำนวณเนื้อที่จากพิกัด UTM เป็นตารางเมตร และแปลงเป็นหน่วยไทย
+                    const areaSqm = calculatePolygonArea(utmPoints);
+                    const areaThai = formatThaiArea(areaSqm);
+
+                    // อัปเดตข้อมูลบนหน้าจอ
+                    document.getElementById('areaSqmResult').innerText = areaSqm.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    document.getElementById('areaThaiResult').innerText = areaThai;
+                    
+                    areaSummary.classList.remove('hidden');
+                } else {
+                    areaSummary.classList.add('hidden');
+                }
+                
+            } else {
+                showError("ไม่พบข้อมูลพิกัดที่ถูกต้องในไฟล์ หรือรูปแบบหัวคอลัมน์ไม่ตรงกัน (name, zone, easting, northing)");
+                actionButtons.classList.add('hidden');
+                summaryBox.classList.add('hidden');
+                areaSummary.classList.add('hidden');
+            }
+            
+            // รีเซ็ต input เผื่อต้องการเลือกไฟล์เดิมอีกครั้ง
+            fileInput.value = '';
+        }
+
+        function exportResults() {
+            if (csvResults.length === 0) return;
+            
+            // แปลง JSON Object กลับเป็น CSV
+            const csv = Papa.unparse(csvResults);
+            
+            // เพิ่ม BOM (\uFEFF) ไว้ข้างหน้าเพื่อให้ Excel อ่านภาษาไทยและ UTF-8 ได้
+            const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", "WGS84_Converted_Coordinates.csv");
+            link.style.visibility = 'hidden';
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // --- ระบบจัดเก็บโครงการ (Project Management) --- //
+
+        function openSaveModal() {
+            if(csvResults.length === 0) {
+                showError("ไม่มีข้อมูลพิกัดสำหรับบันทึก");
+                return;
+            }
+            const modal = document.getElementById('saveProjectModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            
+            // ตั้งชื่อ Default เป็นวันที่และเวลา
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('th-TH');
+            const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+            document.getElementById('projectNameInput').value = `โครงการแปลงพิกัด (${dateStr} ${timeStr})`;
+        }
+
+        function closeSaveModal() {
+            const modal = document.getElementById('saveProjectModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        async function confirmSaveProject() {
+            const name = document.getElementById('projectNameInput').value.trim();
+            if(!name) { 
+                alert("กรุณาตั้งชื่อโครงการ"); 
+                return; 
+            }
+
+            if(!window.userId || !window.db) {
+                alert("กำลังเชื่อมต่อฐานข้อมูล Firebase กรุณารอสักครู่...");
+                return;
+            }
+
+            const btn = document.getElementById('confirmSaveBtn');
+            btn.innerText = "กำลังบันทึก...";
+            btn.disabled = true;
+            btn.classList.add('opacity-70');
+
+            try {
+                const projectData = {
+                    name: name,
+                    points: csvResults, // บันทึก Array ข้อมูลจุดทั้งหมด
+                    createdAt: new Date().toISOString()
+                };
+                
+                // Firestore Rule 1 Path: artifacts/{appId}/users/{userId}/projects
+                await window.fs.addDoc(
+                    window.fs.collection(window.db, 'artifacts', window.appId, 'users', window.userId, 'projects'), 
+                    projectData
+                );
+                
+                closeSaveModal();
+                showToast("บันทึกโครงการสำเร็จ");
+                switchTab('projects'); // พาผู้ใช้ไปดูหน้าโครงการที่บันทึก
+                
+            } catch(e) {
+                console.error(e);
+                alert("เกิดข้อผิดพลาดในการบันทึก: " + e.message);
+            } finally {
+                btn.innerText = "บันทึกข้อมูล";
+                btn.disabled = false;
+                btn.classList.remove('opacity-70');
+            }
+        }
+
+        function initProjects() {
+            if(!window.userId || !window.db) return;
+            
+            const projectsRef = window.fs.collection(window.db, 'artifacts', window.appId, 'users', window.userId, 'projects');
+            const q = window.fs.query(projectsRef);
+            
+            // Subscribe ข้อมูลแบบ Real-time
+            window.fs.onSnapshot(q, (snapshot) => {
+                const listContainer = document.getElementById('projectsList');
+                listContainer.innerHTML = '';
+                
+                if (snapshot.empty) {
+                    listContainer.innerHTML = `
+                        <div class="text-center text-slate-500 py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 mx-auto text-slate-300 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                            ยังไม่มีโครงการที่บันทึกไว้
+                        </div>`;
+                    loadedProjects = [];
+                    return;
+                }
+
+                // เรียงลำดับจากใหม่ไปเก่า (ในหน่วยความจำ Client-side ตามกฏข้อ 2)
+                const projects = [];
+                snapshot.forEach(doc => projects.push({id: doc.id, ...doc.data()}));
+                projects.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+                
+                loadedProjects = projects; // เก็บไว้เผื่อกด Load
+
+                projects.forEach(proj => {
+                    const dateObj = new Date(proj.createdAt);
+                    const dateStr = dateObj.toLocaleDateString('th-TH');
+                    const timeStr = dateObj.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+                    const ptsCount = proj.points ? proj.points.length : 0;
+                    
+                    const item = document.createElement('div');
+                    item.className = "flex justify-between items-center p-4 bg-white rounded-xl border border-slate-200 hover:border-brand-300 hover:shadow-sm transition-all group";
+                    item.innerHTML = `
+                        <div class="overflow-hidden">
+                            <div class="font-bold text-slate-800 truncate">${proj.name}</div>
+                            <div class="text-xs text-slate-500 mt-1 flex items-center gap-2">
+                                <span class="bg-slate-100 px-2 py-0.5 rounded text-slate-600">${dateStr} ${timeStr}</span>
+                                <span>มี ${ptsCount} จุดพิกัด</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 flex-shrink-0 ml-2">
+                            <button onclick="loadProject('${proj.id}')" class="p-2 bg-brand-50 text-brand-600 rounded-lg hover:bg-brand-600 hover:text-white transition-colors" title="เปิดดูโครงการนี้">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                            </button>
+                            <button onclick="openDeleteModal('${proj.id}')" class="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-colors" title="ลบโครงการ">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            </button>
+                        </div>
+                    `;
+                    listContainer.appendChild(item);
+                });
+            }, (error) => {
+                console.error("Error listening to projects:", error);
+                document.getElementById('projectsList').innerHTML = '<div class="text-center text-red-500 py-8 text-sm">เกิดข้อผิดพลาดในการโหลดข้อมูลโครงการ</div>';
+            });
+        }
+
+        // การวาดแผนที่ใหม่เมื่อเรียกคืนโครงการที่บันทึก
+        function loadProject(projectId) {
+            const project = loadedProjects.find(p => p.id === projectId);
+            if(!project || !project.points) return;
+            
+            // นำจุดที่บันทึกไว้กลับมาใส่ในตัวแปรหลัก
+            csvResults = project.points;
+            
+            // เรนเดอร์จุดลงบนแผนที่
+            markersGroup.clearLayers();
+            if(marker) map.removeLayer(marker);
+            if(polygonLayer) map.removeLayer(polygonLayer);
+            
+            let utmPoints = [];
+            
+            project.points.forEach((p) => {
+                const lat = parseFloat(p.WGS84_Lat);
+                const lng = parseFloat(p.WGS84_Lon);
+                const name = p.Name;
+                
+                // สำหรับคำนวณเนื้อที่
+                utmPoints.push({ x: parseFloat(p.WGS84_UTM_E), y: parseFloat(p.WGS84_UTM_N) });
+                
+                const safeName = name.replace(/'/g, "\\'");
+                const popupContent = `
+                    <div class="text-sm font-sans min-w-[140px]">
+                        <b class="text-slate-800">${name}</b><br>
+                        <span class="text-slate-600">Lat: ${lat.toFixed(6)}</span><br>
+                        <span class="text-slate-600">Lon: ${lng.toFixed(6)}</span><br>
+                        <button onclick="startNavigation(${lat}, ${lng}, '${safeName}')" class="mt-3 w-full bg-brand-600 hover:bg-brand-700 text-white px-2 py-1.5 rounded-md text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg> นำทาง
+                        </button>
+                    </div>
+                `;
+                const pointMarker = L.marker([lat, lng], { icon: smallIcon }).bindPopup(popupContent);
+                markersGroup.addLayer(pointMarker);
+            });
+
+            // อัปเดต UI ของหน้า CSV
+            if (project.points.length > 0) {
+                map.fitBounds(markersGroup.getBounds(), { padding: [50, 50] });
+                
+                document.getElementById('actionButtons').classList.remove('hidden');
+                document.getElementById('csvSummary').classList.remove('hidden');
+                document.getElementById('csvSuccessCount').innerText = project.points.length;
+                document.getElementById('csvErrorCount').innerText = "0 (โหลดจากฐานข้อมูล)";
+                
+                const areaSummary = document.getElementById('areaSummary');
+                if (project.points.length >= 3) {
+                    const latlngs = project.points.map(p => [parseFloat(p.WGS84_Lat), parseFloat(p.WGS84_Lon)]);
+                    polygonLayer = L.polygon(latlngs, {
+                        color: '#2563eb', weight: 2, fillColor: '#60a5fa', fillOpacity: 0.25
+                    }).addTo(map);
+
+                    const areaSqm = calculatePolygonArea(utmPoints);
+                    const areaThai = formatThaiArea(areaSqm);
+                    
+                    document.getElementById('areaSqmResult').innerText = areaSqm.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    document.getElementById('areaThaiResult').innerText = areaThai;
+                    areaSummary.classList.remove('hidden');
+                } else {
+                    areaSummary.classList.add('hidden');
+                }
+                
+                showToast(`โหลดโครงการ "${project.name}" สำเร็จ`);
+                switchTab('csv'); // สลับไปหน้าจอ CSV เพื่อให้ดูผลลัพธ์
+            }
+        }
+
+        let projectToDelete = null;
+
+        function openDeleteModal(projectId) {
+            projectToDelete = projectId;
+            const modal = document.getElementById('deleteModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            
+            // ฝัง Event ไว้ที่ปุ่มลบ
+            const confirmBtn = document.getElementById('confirmDeleteBtn');
+            confirmBtn.onclick = executeDeleteProject;
+        }
+
+        function closeDeleteModal() {
+            const modal = document.getElementById('deleteModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            projectToDelete = null;
+        }
+
+        async function executeDeleteProject() {
+            if(!projectToDelete || !window.userId || !window.db) return;
+            
+            const btn = document.getElementById('confirmDeleteBtn');
+            btn.innerText = "กำลังลบ...";
+            btn.disabled = true;
+
+            try {
+                const docRef = window.fs.doc(window.db, 'artifacts', window.appId, 'users', window.userId, 'projects', projectToDelete);
+                await window.fs.deleteDoc(docRef);
+                closeDeleteModal();
+                showToast("ลบโครงการเรียบร้อยแล้ว");
+            } catch(e) {
+                console.error("Error deleting document:", e);
+                alert("ลบข้อมูลไม่สำเร็จ: " + e.message);
+            } finally {
+                btn.innerText = "ลบทิ้ง";
+                btn.disabled = false;
+            }
+        }
+
+        // ---------------------------------------------------------
+        // 6. ระบบนำทาง (Navigation)
+        // ---------------------------------------------------------
+        let navWatchId = null;
+        let navTargetLatLng = null;
+        let userLocMarker = null;
+        let targetProximityCircle = null;
+        let isAutoPanning = true;
+
+        // ไอคอนสีน้ำเงินกระพริบสำหรับแสดงตำแหน่งผู้ใช้
+        const userIcon = L.divIcon({
+            className: 'custom-user-icon',
+            html: '<div class="pulsating-dot"></div>',
+            iconSize: [16, 16],
+            iconAnchor: [8, 8]
+        });
+
+        function startNavigation(lat, lng, name) {
+            if (!navigator.geolocation) {
+                alert('เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่ง (Geolocation)');
+                return;
+            }
+            
+            // ปิด Popup
+            map.closePopup();
+            
+            navTargetLatLng = L.latLng(lat, lng);
+            
+            // แสดง UI ควบคุมการนำทาง
+            document.getElementById('navControl').classList.remove('hidden');
+            document.getElementById('distanceDisplay').classList.remove('hidden');
+            document.getElementById('distVal').innerText = 'ค้นหาตำแหน่ง...';
+            
+            isAutoPanning = true;
+            
+            // เริ่มการติดตามตำแหน่ง (Watch Position) แบบ Real-time
+            navWatchId = navigator.geolocation.watchPosition(
+                updateNavigation,
+                (err) => {
+                    console.warn('Geolocation Error:', err);
+                    if(err.code === 1) alert("โปรดอนุญาตให้เบราว์เซอร์/เว็บไซต์เข้าถึงตำแหน่งที่ตั้งของคุณ (GPS) เพื่อใช้งานระบบนำทาง");
+                },
+                { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+            );
+            
+            // ยกเลิกการซูมและเลื่อนแผนที่อัตโนมัติหากผู้ใช้นำนิ้วเลื่อนแผนที่เอง
+            map.on('dragstart', disableAutoPan);
+        }
+
+        function disableAutoPan() {
+            isAutoPanning = false;
+        }
+
+        function updateNavigation(position) {
+            const userLatLng = L.latLng(position.coords.latitude, position.coords.longitude);
+            
+            // คำนวณระยะทางจากผู้ใช้ไปถึงจุดหมาย
+            const distance = map.distance(userLatLng, navTargetLatLng);
+            document.getElementById('distVal').innerText = distance.toLocaleString(undefined, {maximumFractionDigits: 1});
+            
+            // อัปเดตตำแหน่งจุดผู้ใช้บนแผนที่
+            if (!userLocMarker) {
+                userLocMarker = L.marker(userLatLng, {icon: userIcon, zIndexOffset: 1000}).addTo(map);
+            } else {
+                userLocMarker.setLatLng(userLatLng);
+            }
+            
+            // เลื่อนแผนที่อัตโนมัติให้ครอบคลุมตำแหน่งผู้ใช้และเป้าหมายพร้อมกัน
+            if (isAutoPanning) {
+                 const bounds = L.latLngBounds([userLatLng, navTargetLatLng]);
+                 map.fitBounds(bounds, { padding: [50, 50], maxZoom: 18 });
+            }
+            
+            // ตรวจสอบความใกล้ชิด (ถ้าระยะทางน้อยกว่า 20 เมตร ให้แสดงวงกลมรัศมี 2 เมตรรอบหมุดเป้าหมาย)
+            if (distance <= 20) {
+                if (!targetProximityCircle) {
+                    // สร้างวงกลมบอกอาณาเขตรัศมี 2 เมตร
+                    targetProximityCircle = L.circle(navTargetLatLng, {
+                        radius: 2,
+                        color: '#22c55e',     // สีเขียวขอบเขต
+                        weight: 2,
+                        fillColor: '#22c55e',
+                        fillOpacity: 0.5
+                    }).addTo(map);
+                    
+                    // แจ้งเตือน Toast ด้านขวาล่าง
+                    const toast = document.getElementById('toast');
+                    const originalToastHTML = toast.innerHTML;
+                    
+                    toast.innerHTML = `
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        คุณเข้าใกล้จุดหมายแล้ว (ระยะไม่เกิน 20 เมตร)
+                    `;
+                    toast.classList.remove('translate-y-20', 'opacity-0');
+                    
+                    setTimeout(() => {
+                        toast.classList.add('translate-y-20', 'opacity-0');
+                        setTimeout(() => { toast.innerHTML = originalToastHTML; }, 300); // Reset กลับเป็นข้อความก็อปปี้
+                    }, 4000);
+                }
+            } else {
+                // ลบวงกลมออกถ้าระยะห่างเกิน 20 เมตร
+                if (targetProximityCircle) {
+                    map.removeLayer(targetProximityCircle);
+                    targetProximityCircle = null;
+                }
+            }
+            
+            // หากเข้าใกล้ในระดับ 2 เมตร (หรือต่ำกว่า)
+            if (distance <= 2) {
+                document.getElementById('distVal').innerText = 'ถึงจุดหมาย (2ม.)';
+            }
+        }
+
+        function stopNavigation() {
+            // ยกเลิกระบบติดตาม
+            if (navWatchId !== null) {
+                navigator.geolocation.clearWatch(navWatchId);
+                navWatchId = null;
+            }
+            // ลบ Marker และวงกลมนำทางออก
+            if (userLocMarker) {
+                map.removeLayer(userLocMarker);
+                userLocMarker = null;
+            }
+            if (targetProximityCircle) {
+                map.removeLayer(targetProximityCircle);
+                targetProximityCircle = null;
+            }
+            
+            map.off('dragstart', disableAutoPan);
+            
+            // ซ่อนกล่อง UI
+            document.getElementById('navControl').classList.add('hidden');
+            document.getElementById('distanceDisplay').classList.add('hidden');
+        }
+
+    </script>
+</body>
+</html>
