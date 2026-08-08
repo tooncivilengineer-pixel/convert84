@@ -391,7 +391,7 @@
     <!-- Firebase Setup -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -409,29 +409,50 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // Authenticate anonymously before using any database features
-        signInAnonymously(auth).then(() => {
-            console.log("Firebase 연결สำเร็จ (Authenticated Anonymously)");
-            // Expose to global window scope for standard scripts to access
-            window.db = db;
-            window.auth = auth;
-            window.userId = auth.currentUser.uid;
-            
-            // Standardize appId fetching
-            window.appId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.appId;
+        // ฟังก์ชันจัดการการยืนยันตัวตนเพื่อรองรับการใช้งานข้ามอุปกรณ์ (Sync)
+        async function initAuthentication() {
+            try {
+                try {
+                    // 1. ตรวจสอบก่อนว่ามีการล็อกอินด้วยบัญชีของแพลตฟอร์มนี้หรือไม่ (Custom Token)
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                        console.log("เชื่อมต่อ Firebase สำเร็จ (ด้วยบัญชีผู้ใช้)");
+                    } else {
+                        throw new Error("ไม่มี Token ของระบบ");
+                    }
+                } catch (tokenErr) {
+                    // 2. หาก Token ไม่ตรงกับโปรเจกต์ของคุณ (custom-token-mismatch) ให้ใช้แบบไม่ระบุตัวตนแทน
+                    console.warn("สลับการใช้งาน Firebase เป็นแบบไม่ระบุตัวตน (Anonymous)");
+                    await signInAnonymously(auth);
+                }
 
-            // Expose required firestore methods
-            window.fs = { collection, addDoc, onSnapshot, deleteDoc, doc, query };
-            
-            // Call the init function for projects list
-            if(typeof window.initProjects === 'function') {
-                window.initProjects();
+                // 3. กำหนดค่าตัวแปรระดับ Global ให้ฟังก์ชันอื่นๆ ใช้งาน
+                window.db = db;
+                window.auth = auth;
+                window.userId = auth.currentUser?.uid;
+                
+                // ใช้ App ID ของโปรเจกต์นี้
+                window.appId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.appId;
+
+                // รวบรวมฟังก์ชันฐานข้อมูลไว้
+                window.fs = { collection, addDoc, onSnapshot, deleteDoc, doc, query };
+                
+                // 4. เมื่อล็อกอินสำเร็จ ให้โหลดข้อมูลโครงการทันที
+                if(typeof window.initProjects === 'function') {
+                    window.initProjects();
+                }
+
+            } catch (error) {
+                console.error("เกิดข้อผิดพลาดในการเชื่อมต่อ Firebase:", error);
+                const listContainer = document.getElementById('projectsList');
+                if(listContainer) {
+                    listContainer.innerHTML = '<div class="text-center text-red-500 py-8 text-sm">ไม่สามารถเชื่อมต่อฐานข้อมูลได้ กรุณารีเฟรชหน้าเว็บ</div>';
+                }
             }
-            
-        }).catch((error) => {
-            console.error("เกิดข้อผิดพลาดในการเชื่อมต่อ Firebase:", error);
-            document.getElementById('projectsList').innerHTML = '<div class="text-center text-red-500 py-8 text-sm">ไม่สามารถเชื่อมต่อฐานข้อมูลได้</div>';
-        });
+        }
+
+        // เริ่มทำงานการเชื่อมต่อ
+        initAuthentication();
     </script>
 
     <script>
@@ -975,7 +996,7 @@
                 return; 
             }
 
-            if(!window.userId || !window.db) {
+            if(!window.db) {
                 alert("กำลังเชื่อมต่อฐานข้อมูล Firebase กรุณารอสักครู่...");
                 return;
             }
@@ -992,9 +1013,9 @@
                     createdAt: new Date().toISOString()
                 };
                 
-                // Firestore Rule 1 Path: artifacts/{appId}/users/{userId}/projects
+                // แก้ไข path เป็น public data เพื่อให้มองเห็นได้จากทุกอุปกรณ์
                 await window.fs.addDoc(
-                    window.fs.collection(window.db, 'artifacts', window.appId, 'users', window.userId, 'projects'), 
+                    window.fs.collection(window.db, 'artifacts', window.appId, 'public', 'data', 'projects'), 
                     projectData
                 );
                 
@@ -1013,9 +1034,10 @@
         }
 
         function initProjects() {
-            if(!window.userId || !window.db) return;
+            if(!window.db) return;
             
-            const projectsRef = window.fs.collection(window.db, 'artifacts', window.appId, 'users', window.userId, 'projects');
+            // แก้ไข path เป็น public data
+            const projectsRef = window.fs.collection(window.db, 'artifacts', window.appId, 'public', 'data', 'projects');
             const q = window.fs.query(projectsRef);
             
             // Subscribe ข้อมูลแบบ Real-time
@@ -1163,14 +1185,15 @@
         }
 
         async function executeDeleteProject() {
-            if(!projectToDelete || !window.userId || !window.db) return;
+            if(!projectToDelete || !window.db) return;
             
             const btn = document.getElementById('confirmDeleteBtn');
             btn.innerText = "กำลังลบ...";
             btn.disabled = true;
 
             try {
-                const docRef = window.fs.doc(window.db, 'artifacts', window.appId, 'users', window.userId, 'projects', projectToDelete);
+                // แก้ไข path เป็น public data
+                const docRef = window.fs.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'projects', projectToDelete);
                 await window.fs.deleteDoc(docRef);
                 closeDeleteModal();
                 showToast("ลบโครงการเรียบร้อยแล้ว");
