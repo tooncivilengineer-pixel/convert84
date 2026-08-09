@@ -311,11 +311,19 @@
                     </div>
 
                     <!-- Navigation Info Display -->
-                    <div id="distanceDisplay" class="hidden absolute top-4 left-1/2 transform -translate-x-1/2 z-[400] bg-white/95 backdrop-blur text-brand-800 text-sm font-bold px-4 py-2 rounded-xl shadow-md border border-brand-200 flex items-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-brand-600" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd" />
-                        </svg>
-                        ระยะทาง: <span id="distVal" class="text-brand-600 text-lg">...</span> ม.
+                    <div id="distanceDisplay" class="hidden absolute top-4 left-1/2 transform -translate-x-1/2 z-[400] bg-white/95 backdrop-blur text-brand-800 text-sm font-bold px-4 py-2 rounded-xl shadow-md border border-brand-200 flex flex-col items-center gap-1 min-w-[200px]">
+                        <div class="flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-brand-600" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd" />
+                            </svg>
+                            ระยะทาง: <span id="distVal" class="text-brand-600 text-lg">...</span> ม.
+                        </div>
+                        <div class="text-xs text-slate-500 font-medium flex items-center gap-1 border-t border-slate-100 pt-1 w-full justify-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                            </svg>
+                            มุ่งหน้า: <span id="dirVal" class="text-brand-600">...</span>
+                        </div>
                     </div>
 
                     <!-- Navigation Action Buttons (Bottom Center) -->
@@ -750,6 +758,7 @@
         // Navigation and GPS
         let navWatchId = null, navTargetLatLng = null, userLocMarker = null, targetProximityCircle = null, isAutoPanning = true;
         let lastKnownGpsLatLng = null;
+        let navLine = null; // เพิ่มตัวแปรสำหรับเส้นประบอกทิศทาง
 
         const userIcon = L.divIcon({
             className: 'clean-div-icon',
@@ -768,6 +777,7 @@
             document.getElementById('navControl').classList.add('flex');
             document.getElementById('distanceDisplay').classList.remove('hidden');
             document.getElementById('distanceDisplay').classList.add('flex');
+            document.getElementById('dirVal').innerText = "...";
             isAutoPanning = true;
             
             // วาดวงกลมรัศมี 1 เมตร รอบเป้าหมาย
@@ -784,22 +794,63 @@
             map.on('dragstart', () => { isAutoPanning = false; });
         };
 
+        // ฟังก์ชันคำนวณมุมทิศทาง (Bearing)
+        function calculateBearing(lat1, lng1, lat2, lng2) {
+            const toRad = Math.PI / 180;
+            const toDeg = 180 / Math.PI;
+            const dLng = (lng2 - lng1) * toRad;
+            const y = Math.sin(dLng) * Math.cos(lat2 * toRad);
+            const x = Math.cos(lat1 * toRad) * Math.sin(lat2 * toRad) -
+                      Math.sin(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.cos(dLng);
+            let brng = Math.atan2(y, x) * toDeg;
+            return (brng + 360) % 360;
+        }
+
+        // ฟังก์ชันแปลงมุมเป็นข้อความทิศ
+        function getDirectionText(bearing) {
+            const dirs = ["ทิศเหนือ (N)", "ทิศตะวันออกเฉียงเหนือ (NE)", "ทิศตะวันออก (E)", "ทิศตะวันออกเฉียงใต้ (SE)", "ทิศใต้ (S)", "ทิศตะวันตกเฉียงใต้ (SW)", "ทิศตะวันตก (W)", "ทิศตะวันตกเฉียงเหนือ (NW)"];
+            const MathRound = Math.round(bearing / 45) % 8;
+            return dirs[MathRound];
+        }
+
         function updateNav(position) {
             const userLatLng = L.latLng(position.coords.latitude, position.coords.longitude);
             lastKnownGpsLatLng = userLatLng;
             const distance = map.distance(userLatLng, navTargetLatLng);
             
-            const distDisplay = document.getElementById('distVal');
-            distDisplay.innerText = distance.toLocaleString(undefined, {maximumFractionDigits: 1});
+            // คำนวณและแสดงทิศทาง
+            const bearing = calculateBearing(userLatLng.lat, userLatLng.lng, navTargetLatLng.lat, navTargetLatLng.lng);
+            const dirText = getDirectionText(bearing);
             
-            // เปลี่ยนสีวงกลมและตัวเลขเมื่อเข้าใกล้ระยะ 1 เมตร
+            const distDisplay = document.getElementById('distVal');
+            const dirDisplay = document.getElementById('dirVal');
+            distDisplay.innerText = distance.toLocaleString(undefined, {maximumFractionDigits: 1});
+            dirDisplay.innerText = dirText;
+            
+            // วาดหรืออัปเดตเส้นประบอกทิศทาง
+            if (!navLine) {
+                navLine = L.polyline([userLatLng, navTargetLatLng], {
+                    color: '#3b82f6', 
+                    weight: 3, 
+                    dashArray: '8, 8', // ทำให้เป็นเส้นประ
+                    opacity: 0.7
+                }).addTo(map);
+            } else {
+                navLine.setLatLngs([userLatLng, navTargetLatLng]);
+            }
+            
+            // เปลี่ยนสีวงกลม ตัวเลข และเส้นประ เมื่อเข้าใกล้ระยะ 1 เมตร
             if (targetProximityCircle) {
                 if (distance <= 1.0) {
-                    targetProximityCircle.setStyle({ color: '#22c55e', fillColor: '#22c55e' }); // เปลี่ยนเป็นสีเขียว
+                    targetProximityCircle.setStyle({ color: '#22c55e', fillColor: '#22c55e' }); 
                     distDisplay.classList.replace('text-brand-600', 'text-emerald-500');
+                    dirDisplay.classList.replace('text-brand-600', 'text-emerald-500');
+                    if(navLine) navLine.setStyle({ color: '#22c55e' });
                 } else {
-                    targetProximityCircle.setStyle({ color: '#3b82f6', fillColor: '#3b82f6' }); // สีฟ้าเหมือนเดิม
+                    targetProximityCircle.setStyle({ color: '#3b82f6', fillColor: '#3b82f6' }); 
                     distDisplay.classList.replace('text-emerald-500', 'text-brand-600');
+                    dirDisplay.classList.replace('text-emerald-500', 'text-brand-600');
+                    if(navLine) navLine.setStyle({ color: '#3b82f6' });
                 }
             }
             
@@ -814,9 +865,11 @@
             navWatchId = null;
             if (userLocMarker) { map.removeLayer(userLocMarker); userLocMarker = null; }
             if (targetProximityCircle) { map.removeLayer(targetProximityCircle); targetProximityCircle = null; }
+            if (navLine) { map.removeLayer(navLine); navLine = null; } // ลบเส้นประออก
             
             // รีเซ็ตสีตัวเลขระยะทางกลับเป็นสีฟ้า
             document.getElementById('distVal').classList.replace('text-emerald-500', 'text-brand-600');
+            document.getElementById('dirVal').classList.replace('text-emerald-500', 'text-brand-600');
             
             document.getElementById('mapWrapper').classList.remove('map-fullscreen');
             setTimeout(() => { map.invalidateSize(); }, 300);
