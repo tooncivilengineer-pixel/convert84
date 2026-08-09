@@ -2,32 +2,17 @@
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ระบบแปลงพิกัด Indian1975 เป็น WGS84</title>
-
-    <!-- Tailwind CSS สำหรับตกแต่งความสวยงาม -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ระบบแปลงพิกัด Indian 1975 เป็น WGS 1984</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Leaflet CSS & JS สำหรับระบบแผนที่ -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
-    <!-- Proj4js สำหรับคำนวณแปลงพิกัดคณิตศาสตร์ -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
-    
-    <!-- PapaParse สำหรับอ่านไฟล์ CSV -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; }
-        
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #f8fafc; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-
-        /* Class สำหรับแผนที่เต็มหน้าจอเวลาเปิดนำทาง */
         .map-fullscreen {
             position: fixed !important;
             top: 0 !important;
@@ -37,269 +22,209 @@
             z-index: 9999 !important;
             border-radius: 0 !important;
         }
-
-        /* Class เคลียร์ขอบให้ไอคอน GPS ผู้ใช้ */
+        /* Lock SVG Icon Size to prevent CSS bug */
         .user-nav-icon {
-            background: transparent;
-            border: none;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            background: transparent !important;
+            border: none !important;
+        }
+        .user-nav-icon svg {
+            width: 24px !important;
+            height: 24px !important;
+            display: block;
         }
     </style>
 </head>
-<body class="bg-slate-50 min-h-screen text-slate-800 flex flex-col">
+<body class="bg-slate-50 min-h-screen text-slate-800 p-4 md:p-6 lg:p-8">
 
-    <header class="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-[1000]">
-        <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/20">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                </div>
-                <div>
-                    <h1 class="text-xl font-bold text-slate-800">ระบบแปลงพิกัด (Indian 1975 ➔ WGS 84)</h1>
-                    <p class="text-xs text-slate-500 font-medium">โซน 47N และ 48N - ประเทศไทย</p>
-                </div>
-            </div>
-        </div>
-    </header>
-
-    <main class="flex-grow max-w-7xl mx-auto w-full p-4 lg:p-6 lg:grid lg:grid-cols-12 gap-6 relative">
+    <div class="max-w-7xl mx-auto flex flex-col lg:flex-row gap-6 h-[calc(100vh-4rem)]">
         
-        <div class="lg:col-span-4 flex flex-col gap-5 bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-            
-            <!-- เมนู Tabs -->
-            <div class="flex bg-slate-100 p-1 rounded-xl">
-                <button onclick="switchTab('single')" id="btnTab-single" class="flex-1 py-2 text-sm font-semibold rounded-lg bg-white text-blue-600 shadow-sm transition-all">จุดเดียว</button>
-                <button onclick="switchTab('batch')" id="btnTab-batch" class="flex-1 py-2 text-sm font-medium rounded-lg text-slate-500 hover:text-slate-700 transition-all">ไฟล์ CSV</button>
-                <button onclick="switchTab('project')" id="btnTab-project" class="flex-1 py-2 text-sm font-medium rounded-lg text-slate-500 hover:text-slate-700 transition-all">โครงการ</button>
-            </div>
-
-            <!-- Tab 1: จุดเดียว -->
-            <div id="tab-single" class="block">
-                <form id="convertForm" class="flex flex-col gap-4">
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">ชื่อจุด (ไม่บังคับ)</label>
-                        <input type="text" id="ptName" placeholder="เช่น จุดเริ่มต้น" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all">
-                    </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Easting (X)</label>
-                            <input type="number" step="any" id="easting" required placeholder="654321.123" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Northing (Y)</label>
-                            <input type="number" step="any" id="northing" required placeholder="1456789.123" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all">
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">UTM Zone</label>
-                        <select id="zone" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all appearance-none cursor-pointer">
-                            <option value="47">47N (ภาคกลาง, เหนือ, ใต้)</option>
-                            <option value="48">48N (ภาคอีสาน, ตะวันออก)</option>
-                        </select>
-                    </div>
-                    <button type="button" onclick="convertSingle()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl px-4 py-3 text-sm transition-all shadow-md shadow-blue-600/20 active:scale-[0.98]">
-                        แปลงค่าพิกัด
-                    </button>
-                </form>
-
-                <div id="resultBox" class="hidden mt-6 bg-blue-50/50 border border-blue-100 rounded-xl p-4 relative overflow-hidden">
-                    <div class="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
-                    <h3 class="text-xs font-bold text-blue-800 uppercase tracking-wider mb-3">ผลลัพธ์ WGS 84</h3>
-                    
-                    <div class="space-y-3">
-                        <div class="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-blue-100/50">
-                            <div><div class="text-[10px] text-slate-400 font-semibold uppercase">UTM Easting</div><div id="resUTMX" class="font-mono text-sm text-slate-700">-</div></div>
-                            <div><div class="text-[10px] text-slate-400 font-semibold uppercase text-right">Northing</div><div id="resUTMY" class="font-mono text-sm text-slate-700 text-right">-</div></div>
-                        </div>
-                        <div class="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-blue-100/50">
-                            <div><div class="text-[10px] text-slate-400 font-semibold uppercase">Latitude</div><div id="resLat" class="font-mono text-sm text-slate-700">-</div></div>
-                            <div><div class="text-[10px] text-slate-400 font-semibold uppercase text-right">Longitude</div><div id="resLng" class="font-mono text-sm text-slate-700 text-right">-</div></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Tab 2: นำเข้าไฟล์ CSV -->
-            <div id="tab-batch" class="hidden flex flex-col gap-4">
-                <div class="bg-blue-50 border border-blue-200 border-dashed rounded-2xl p-6 text-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-blue-500 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <p class="text-sm text-slate-600 font-medium mb-1">ลากไฟล์ CSV มาวางที่นี่</p>
-                    <p class="text-xs text-slate-500 mb-4">หรือคลิกเพื่อเลือกไฟล์</p>
-                    <input type="file" id="csvFileInput" accept=".csv" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
-                </div>
+        <!-- Left Panel: Controls -->
+        <div class="w-full lg:w-[400px] flex flex-col gap-4 shrink-0 overflow-y-auto pr-2 pb-20 lg:pb-0 h-full">
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                <h1 class="text-xl font-bold text-slate-800 mb-1">แปลงพิกัดฉาก</h1>
+                <p class="text-sm text-slate-500 mb-4">Indian 1975 เป็น WGS 1984</p>
                 
-                <div class="grid grid-cols-2 gap-2">
-                    <button onclick="downloadTemplate()" class="col-span-2 text-xs text-blue-600 font-semibold hover:underline text-center p-2">📥 ดาวน์โหลดไฟล์ต้นแบบ (.csv)</button>
-                    <button onclick="processCSV()" class="bg-blue-600 text-white rounded-xl py-3 text-sm font-semibold shadow-md active:scale-[0.98]">เริ่มแปลงไฟล์</button>
-                    <button id="btnDownloadCSV" onclick="downloadCSV()" disabled class="bg-emerald-500 text-white rounded-xl py-3 text-sm font-semibold shadow-md opacity-50 cursor-not-allowed">โหลดผลลัพธ์</button>
+                <div class="flex p-1 bg-slate-100 rounded-lg mb-6">
+                    <button onclick="switchTab('single')" id="tab-single" class="flex-1 py-1.5 text-sm font-medium rounded-md bg-white shadow-sm text-blue-600 transition-all">จุดเดียว</button>
+                    <button onclick="switchTab('csv')" id="tab-csv" class="flex-1 py-1.5 text-sm font-medium rounded-md text-slate-500 hover:text-slate-700 transition-all">ไฟล์ CSV</button>
+                    <button onclick="switchTab('projects')" id="tab-projects" class="flex-1 py-1.5 text-sm font-medium rounded-md text-slate-500 hover:text-slate-700 transition-all">โครงการ</button>
                 </div>
 
-                <div id="areaResultBox" class="hidden mt-2 bg-emerald-50 border border-emerald-100 rounded-xl p-4">
-                    <h3 class="text-xs font-bold text-emerald-800 uppercase mb-2">📐 เนื้อที่แปลง (คำนวณจากพิกัด)</h3>
-                    <div class="text-emerald-700 text-lg font-bold" id="areaRaiNganWa">0 ไร่ 0 งาน 0 ตร.ว.</div>
-                    <div class="text-emerald-600 text-xs mt-1">หรือ <span id="areaSqm">0</span> ตารางเมตร</div>
+                <!-- Content: Single -->
+                <div id="content-single" class="space-y-4">
+                    <form id="convertForm" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">โซน (UTM Zone)</label>
+                            <select id="zoneInput" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-xl focus:ring-blue-500 focus:border-blue-500 block p-2.5 outline-none">
+                                <option value="47">47 N (ภาคกลาง, เหนือ, ใต้)</option>
+                                <option value="48">48 N (ภาคตะวันออกเฉียงเหนือ)</option>
+                            </select>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Easting (X)</label>
+                                <input type="number" step="0.001" id="eastingInput" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-xl focus:ring-blue-500 focus:border-blue-500 block p-2.5 outline-none" placeholder="เช่น 612345.678" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Northing (Y)</label>
+                                <input type="number" step="0.001" id="northingInput" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-xl focus:ring-blue-500 focus:border-blue-500 block p-2.5 outline-none" placeholder="เช่น 1512345.678" required>
+                            </div>
+                        </div>
+                        <button type="submit" class="w-full text-white bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-xl text-sm px-5 py-3 text-center transition-colors shadow-sm">
+                            คำนวณแปลงค่าพิกัด
+                        </button>
+                    </form>
                 </div>
 
-                <div id="saveProjectSection" class="hidden border-t border-slate-200 pt-4 mt-2">
-                    <label class="block text-xs font-semibold text-slate-600 mb-2">บันทึกโครงการเก็บไว้ในระบบ</label>
+                <!-- Content: CSV -->
+                <div id="content-csv" class="hidden space-y-4">
+                    <div class="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center hover:bg-slate-50 transition-colors relative">
+                        <input type="file" id="csvFileInput" accept=".csv" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                        <i class="ph ph-file-csv text-4xl text-slate-400 mb-2"></i>
+                        <p class="text-sm font-medium text-slate-700">คลิกหรือลากไฟล์ CSV มาวางที่นี่</p>
+                        <p class="text-xs text-slate-500 mt-1">คอลัมน์: Name, Zone, Easting, Northing</p>
+                    </div>
                     <div class="flex gap-2">
-                        <input type="text" id="newProjectName" placeholder="ตั้งชื่อโครงการ..." class="flex-grow bg-slate-50 border border-slate-200 rounded-xl px-3 text-sm">
-                        <button onclick="saveProject()" class="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-semibold">บันทึก</button>
+                        <button onclick="downloadTemplate()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium py-2 px-3 rounded-lg transition-colors">
+                            <i class="ph ph-download-simple inline-block mr-1"></i> ไฟล์ต้นแบบ
+                        </button>
+                        <button id="downloadBtn" onclick="downloadResults()" class="hidden flex-1 bg-green-500 hover:bg-green-600 text-white text-sm font-medium py-2 px-3 rounded-lg transition-colors shadow-sm">
+                            <i class="ph ph-file-arrow-down inline-block mr-1"></i> โหลดผลลัพธ์
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Content: Projects -->
+                <div id="content-projects" class="hidden space-y-4">
+                    <div class="flex items-center text-blue-600 mb-2">
+                        <i class="ph ph-archive-box text-xl mr-2"></i>
+                        <span class="font-semibold text-sm">โครงการที่บันทึกไว้</span>
+                    </div>
+                    <div id="projectsList" class="flex flex-col gap-2 max-h-[300px] overflow-y-auto pr-1">
+                        <div class="text-center text-slate-500 text-sm py-4">กำลังดึงข้อมูล...</div>
                     </div>
                 </div>
             </div>
 
-            <!-- Tab 3: โครงการ -->
-            <div id="tab-project" class="hidden flex flex-col gap-3">
-                <h3 class="text-sm font-bold text-slate-700">โครงการที่บันทึกไว้</h3>
-                <div id="projectList" class="flex flex-col gap-3 max-h-[400px] overflow-y-auto pr-1">
-                    <div class="text-center text-sm text-slate-400 py-4">กำลังโหลดข้อมูล...</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="lg:col-span-8 flex flex-col">
-            <div id="mapWrapper" class="bg-slate-200 rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-[500px] lg:h-full min-h-[500px] relative transition-all duration-300">
+            <!-- Results Area -->
+            <div id="resultCard" class="hidden bg-white p-5 rounded-2xl shadow-sm border border-slate-200 relative">
+                <button id="saveProjectBtn" onclick="showSaveProjectModal()" class="hidden absolute top-4 right-4 text-blue-600 hover:bg-blue-50 p-1.5 rounded-lg transition-colors text-sm font-medium flex items-center gap-1">
+                    <i class="ph ph-floppy-disk text-lg"></i> บันทึก
+                </button>
+                <h2 class="text-base font-bold text-slate-800 mb-3 border-b pb-2">ผลลัพธ์ WGS 1984</h2>
                 
-                <!-- Map Controls overlay -->
-                <div class="absolute top-4 right-4 z-[400] flex flex-col gap-2 items-end pointer-events-none">
-                    <div class="bg-white/90 backdrop-blur text-xs font-medium px-3 py-1.5 rounded-lg shadow-sm border border-slate-200 text-slate-600">
-                        แผนที่แสดงจุดพิกัด (WGS84)
-                    </div>
-                    <div class="bg-emerald-500/90 backdrop-blur text-xs font-medium px-3 py-1.5 rounded-lg shadow-sm text-white animate-pulse">
-                        💡 แตะแผนที่เพื่อเพิ่มจุดใหม่
-                    </div>
+                <div id="areaResult" class="hidden mb-4 bg-green-50 p-3 rounded-xl border border-green-100">
+                    <div class="text-xs font-semibold text-green-700 mb-1">เนื้อที่คำนวณ (จาก UTM)</div>
+                    <div id="areaText" class="text-green-800 font-bold text-sm"></div>
                 </div>
 
-                <!-- Navigation Display -->
-                <div id="distanceDisplay" class="hidden absolute top-4 left-1/2 transform -translate-x-1/2 z-[400] bg-white/95 backdrop-blur text-blue-800 text-sm font-bold px-4 py-2 rounded-xl shadow-md border border-blue-200 flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-600" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd" /></svg>
-                    ระยะทาง: <span id="distVal" class="text-blue-600 text-lg">...</span> ม.
-                </div>
-
-                <!-- Navigation Controls -->
-                <div id="navControlsContainer" class="hidden absolute bottom-6 left-1/2 transform -translate-x-1/2 z-[400] flex gap-3 w-[90%] max-w-[320px] justify-center">
-                    <button onclick="saveCurrentLocation()" class="flex-1 bg-emerald-500 text-white px-4 py-3 rounded-full shadow-lg flex items-center justify-center gap-1.5 cursor-pointer hover:bg-emerald-600 transition-colors font-medium text-sm pointer-events-auto">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
-                        บันทึกที่นี่
-                    </button>
-                    <button onclick="stopNavigation()" class="flex-1 bg-red-500 text-white px-4 py-3 rounded-full shadow-lg flex items-center justify-center gap-1.5 cursor-pointer hover:bg-red-600 transition-colors font-medium text-sm pointer-events-auto">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                        เลิกนำทาง
-                    </button>
-                </div>
-
-                <!-- The Map -->
-                <div id="map" class="flex-grow w-full h-full bg-slate-100 z-[1]"></div>
+                <div id="singleResultDetails" class="space-y-3"></div>
             </div>
         </div>
-    </main>
 
-    <!-- Add Point Modal -->
-    <div id="addPointModal" class="hidden fixed inset-0 bg-slate-900/60 z-[10000] flex items-center justify-center backdrop-blur-sm p-4">
-        <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 transform scale-100 transition-all">
-            <h3 class="text-lg font-bold text-slate-800 mb-4">เพิ่มจุดพิกัดใหม่</h3>
-            <div class="space-y-3 mb-6">
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">ชื่อจุด</label>
-                    <input type="text" id="addPointName" class="w-full border rounded-xl px-3 py-2 text-sm bg-slate-50">
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Easting (Indian1975)</label>
-                        <input type="text" id="addPointEasting" readonly class="w-full border rounded-xl px-3 py-2 text-sm bg-slate-100 text-slate-500">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Northing (Indian1975)</label>
-                        <input type="text" id="addPointNorthing" readonly class="w-full border rounded-xl px-3 py-2 text-sm bg-slate-100 text-slate-500">
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">โซน</label>
-                    <input type="text" id="addPointZone" readonly class="w-full border rounded-xl px-3 py-2 text-sm bg-slate-100 text-slate-500">
-                </div>
+        <!-- Right Panel: Map -->
+        <div id="mapWrapper" class="relative flex-1 bg-slate-100 rounded-2xl overflow-hidden border border-slate-200 min-h-[400px] lg:min-h-0 transition-all duration-300">
+            <!-- Line Style Toggle (Absolute on top of Map) -->
+            <div class="absolute top-4 right-4 z-[400] bg-white/90 backdrop-blur p-2 rounded-xl shadow-lg border border-slate-200 flex flex-col gap-1">
+                <label class="text-xs font-semibold text-slate-700 mb-1 px-1">รูปแบบเส้น</label>
+                <select id="lineStyleSelect" onchange="updateLineStyle()" class="text-sm border border-slate-300 rounded-lg p-1.5 bg-slate-50 text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+                    <option value="polygon">รูปปิด (Polygon)</option>
+                    <option value="polyline">เส้นแนว (Polyline)</option>
+                    <option value="none">หมุดอย่างเดียว (No line)</option>
+                </select>
             </div>
-            <div class="flex justify-end gap-3">
-                <button onclick="closeAddPointModal()" class="bg-slate-200 text-slate-800 px-5 py-2 rounded-xl text-sm font-medium">ยกเลิก</button>
-                <button onclick="confirmAddPoint()" class="bg-blue-600 text-white px-5 py-2 rounded-xl text-sm font-medium">เพิ่มลงโครงการ</button>
+
+            <div id="map" class="w-full h-full z-0"></div>
+            
+            <!-- Navigation UI -->
+            <div id="navUI" class="hidden absolute bottom-6 left-1/2 -translate-x-1/2 z-[400] bg-white px-6 py-4 rounded-2xl shadow-xl border border-slate-200 w-[90%] max-w-sm text-center">
+                <div class="text-slate-500 text-sm font-medium mb-1">ระยะทางถึงเป้าหมาย</div>
+                <div id="navDistance" class="text-4xl font-bold text-blue-600 mb-4">-- ม.</div>
+                <div class="flex gap-2 justify-center">
+                    <button onclick="saveCurrentGPS()" class="flex-1 bg-green-500 hover:bg-green-600 text-white font-medium py-2.5 px-3 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-1 text-sm">
+                        <i class="ph ph-map-pin-plus text-lg"></i> บันทึกพิกัดที่นี่
+                    </button>
+                    <button onclick="stopNavigation()" class="flex-1 bg-rose-500 hover:bg-rose-600 text-white font-medium py-2.5 px-4 rounded-xl transition-colors shadow-sm text-sm">
+                        ยกเลิก
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Edit Project Modal -->
-    <div id="editProjectModal" class="hidden fixed inset-0 bg-slate-900/60 z-[10000] flex flex-col items-center justify-center backdrop-blur-sm p-4">
-        <div class="bg-white rounded-2xl shadow-xl w-full max-w-4xl p-6 flex flex-col max-h-[90vh]">
-            <h3 class="text-lg font-bold text-slate-800 mb-4">แก้ไขข้อมูลโครงการ</h3>
-            <div class="mb-4">
-                <label class="block text-xs font-semibold text-slate-600 mb-1">ชื่อโครงการ</label>
-                <input type="text" id="editProjectName" class="w-full border rounded-xl px-3 py-2 text-sm max-w-sm">
+    <!-- Modal: Save Project -->
+    <div id="saveModal" class="hidden fixed inset-0 z-[500] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5">
+            <h3 class="text-lg font-bold text-slate-800 mb-4">บันทึกโครงการ</h3>
+            <label class="block text-sm font-medium text-slate-700 mb-1">ชื่อโครงการ</label>
+            <input type="text" id="projectNameInput" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-xl p-2.5 mb-4 outline-none focus:border-blue-500" placeholder="ระบุชื่อโครงการ..." required>
+            <div class="flex gap-2">
+                <button onclick="closeSaveModal()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2 rounded-xl transition-colors">ยกเลิก</button>
+                <button onclick="confirmSaveProject()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-xl transition-colors">บันทึก</button>
             </div>
-            <div class="flex-grow overflow-auto border rounded-xl mb-4">
-                <table class="w-full text-left border-collapse text-sm min-w-[600px]">
-                    <thead class="bg-slate-50 sticky top-0 shadow-sm">
+        </div>
+    </div>
+
+    <!-- Modal: Edit Project -->
+    <div id="editModal" class="hidden fixed inset-0 z-[500] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-4xl p-5 max-h-[90vh] flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-slate-800">แก้ไขโครงการ</h3>
+                <button onclick="closeEditModal()" class="text-slate-400 hover:text-slate-600"><i class="ph ph-x text-xl"></i></button>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-slate-700 mb-1">ชื่อโครงการ</label>
+                <input type="text" id="editProjectName" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-xl p-2.5 outline-none focus:border-blue-500">
+            </div>
+
+            <div class="flex-1 overflow-auto border border-slate-200 rounded-xl mb-4 bg-slate-50">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-slate-100 sticky top-0 shadow-sm">
                         <tr>
-                            <th class="p-3 border-b text-slate-600 font-semibold w-12 text-center">No.</th>
-                            <th class="p-3 border-b text-slate-600 font-semibold">ชื่อจุด</th>
-                            <th class="p-3 border-b text-slate-600 font-semibold">Easting (Indian1975)</th>
-                            <th class="p-3 border-b text-slate-600 font-semibold">Northing (Indian1975)</th>
-                            <th class="p-3 border-b text-slate-600 font-semibold w-24">โซน</th>
-                            <th class="p-3 border-b text-slate-600 font-semibold w-16 text-center">ลบ</th>
+                            <th class="p-2 text-xs font-medium text-slate-500 text-center w-12">ลำดับ</th>
+                            <th class="p-2 text-xs font-medium text-slate-500">ชื่อจุด (Name)</th>
+                            <th class="p-2 text-xs font-medium text-slate-500 w-24">โซน</th>
+                            <th class="p-2 text-xs font-medium text-slate-500 w-32">Easting (X)</th>
+                            <th class="p-2 text-xs font-medium text-slate-500 w-32">Northing (Y)</th>
+                            <th class="p-2 text-xs font-medium text-slate-500 text-center w-16">ลบ</th>
                         </tr>
                     </thead>
-                    <tbody id="editProjectTableBody" class="divide-y divide-slate-100">
-                        <!-- Rows -->
+                    <tbody id="editTableBody" class="divide-y divide-slate-200 bg-white">
+                        <!-- Table rows injected via JS -->
                     </tbody>
                 </table>
             </div>
-            <div class="flex justify-between items-center">
-                <button onclick="addEmptyRowToEdit()" class="text-blue-600 text-sm font-medium flex items-center gap-1 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors">
+
+            <div class="flex justify-between mt-auto">
+                <button onclick="addNewPointToEdit()" class="text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-xl text-sm font-medium transition-colors border border-blue-200">
                     + เพิ่มจุดใหม่
                 </button>
-                <div class="flex gap-3">
-                    <button onclick="closeEditModal()" class="bg-slate-200 text-slate-800 px-5 py-2 rounded-xl text-sm font-medium">ยกเลิก</button>
-                    <button onclick="saveProjectEdit()" class="bg-blue-600 text-white px-5 py-2 rounded-xl text-sm font-medium">บันทึกการแก้ไข</button>
+                <div class="flex gap-2">
+                    <button onclick="closeEditModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2 px-6 rounded-xl transition-colors">ยกเลิก</button>
+                    <button onclick="saveEditProject()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-xl transition-colors">บันทึกการแก้ไข</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Alert Custom Modal -->
-    <div id="alertModal" class="hidden fixed inset-0 bg-slate-900/60 z-[20000] flex items-center justify-center backdrop-blur-sm p-4">
-        <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 transform scale-100 transition-all">
-            <h3 class="text-lg font-bold text-slate-800 mb-2">แจ้งเตือน</h3>
-            <p id="alertMessage" class="text-slate-600 text-sm mb-6"></p>
-            <div class="flex justify-end">
-                <button onclick="document.getElementById('alertModal').classList.add('hidden')" class="bg-blue-600 text-white px-5 py-2 rounded-xl text-sm font-medium">ตกลง</button>
+    <!-- Custom Alert Modal -->
+    <div id="customAlert" class="hidden fixed inset-0 z-[9999] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 transform scale-95 opacity-0 transition-all duration-300" id="alertBox">
+            <div class="flex items-center gap-3 mb-3">
+                <div id="alertIcon" class="w-10 h-10 rounded-full flex items-center justify-center text-xl shrink-0"></div>
+                <h3 id="alertTitle" class="text-lg font-bold text-slate-800"></h3>
             </div>
-        </div>
-    </div>
-
-    <!-- Confirm Delete Modal -->
-    <div id="confirmDeleteModal" class="hidden fixed inset-0 bg-slate-900/60 z-[20000] flex items-center justify-center backdrop-blur-sm p-4">
-        <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
-            <h3 class="text-lg font-bold text-slate-800 mb-2">ยืนยันการลบ</h3>
-            <p class="text-slate-600 text-sm mb-6">คุณต้องการลบโครงการนี้ใช่หรือไม่? ข้อมูลจะไม่สามารถกู้คืนได้</p>
-            <div class="flex justify-end gap-3">
-                <button onclick="document.getElementById('confirmDeleteModal').classList.add('hidden')" class="bg-slate-200 text-slate-800 px-5 py-2 rounded-xl text-sm font-medium">ยกเลิก</button>
-                <button id="confirmDeleteBtn" class="bg-red-500 text-white px-5 py-2 rounded-xl text-sm font-medium">ลบข้อมูล</button>
-            </div>
+            <p id="alertMessage" class="text-slate-600 text-sm mb-6 pl-13"></p>
+            <button onclick="closeAlert()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-xl transition-colors">ตกลง</button>
         </div>
     </div>
 
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, getDocs, doc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, query } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // Firebase Setup
         const firebaseConfig = {
             apiKey: "AIzaSyDxFfXCG5looRXmriLgGmCSHDpo2_6voBU",
             authDomain: "toon-civil-gis.firebaseapp.com",
@@ -309,63 +234,185 @@
             appId: "1:795968328879:web:b494aec8fdab277453f05a",
             measurementId: "G-WYZCPFCP8L"
         };
+
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
         
-        // ตามกฎ Data Path
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'toon-civil-gis';
-        const publicProjectsRef = collection(db, 'artifacts', appId, 'public', 'data', 'projects');
+        // กำหนดโฟลเดอร์หลักสำหรับบันทึกงานใหม่
+        const saveCollectionPath = 'projects'; 
+        // รวบรวมทุกเส้นทางที่เคยใช้บันทึกข้อมูลตั้งแต่วันแรกอย่างละเอียด
+        const searchPaths = [
+            'projects', 
+            'saved_projects', 
+            'public_projects',
+            'public/data/projects',
+            'artifacts/default-app-id/public/data/projects',
+            'artifacts/1:795968328879:web:b494aec8fdab277453f05a/public/data/projects',
+            'artifacts/undefined/public/data/projects'
+        ]; 
 
-        // State & Proj4 Config
+        // Define EPSG:24047 and 24048 (Indian 1975 UTM 47N/48N) using 3-Parameter Datum Shift to WGS84
+        proj4.defs("EPSG:24047", "+proj=utm +zone=47 +a=6377276.345 +b=6356075.41314024 +towgs84=209,818,290,0,0,0,0 +units=m +no_defs");
+        proj4.defs("EPSG:24048", "+proj=utm +zone=48 +a=6377276.345 +b=6356075.41314024 +towgs84=209,818,290,0,0,0,0 +units=m +no_defs");
+
         let map;
         let markersGroup;
-        let polygonLayer;
-        let currentProjectData = [];
-        let savedProjects = [];
-        let authInitialized = false;
+        let polygonLayer = null;
+        let csvResults = [];
+        let currentProjectName = "";
+        let currentLineStyle = 'polygon';
+        
+        let watchId = null;
+        let userMarker = null;
+        let targetLatLng = null;
+        let targetRadius = null;
 
-        // Proj4 Definitions
-        proj4.defs("EPSG:24047", "+proj=utm +zone=47 +a=6377276.345 +rf=300.8017 +towgs84=209,818,290,0,0,0,0 +units=m +no_defs");
-        proj4.defs("EPSG:24048", "+proj=utm +zone=48 +a=6377276.345 +rf=300.8017 +towgs84=209,818,290,0,0,0,0 +units=m +no_defs");
-        proj4.defs("EPSG:32647", "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs");
-        proj4.defs("EPSG:32648", "+proj=utm +zone=48 +datum=WGS84 +units=m +no_defs");
+        // Custom UI Alert Function
+        window.showAlert = function(title, message, type = 'info') {
+            const alertEl = document.getElementById('customAlert');
+            const boxEl = document.getElementById('alertBox');
+            const titleEl = document.getElementById('alertTitle');
+            const msgEl = document.getElementById('alertMessage');
+            const iconEl = document.getElementById('alertIcon');
+            
+            titleEl.innerText = title;
+            msgEl.innerText = message;
+            
+            if (type === 'success') {
+                iconEl.innerHTML = '<i class="ph ph-check-circle"></i>';
+                iconEl.className = 'w-10 h-10 rounded-full flex items-center justify-center text-2xl shrink-0 bg-green-100 text-green-600';
+            } else if (type === 'error') {
+                iconEl.innerHTML = '<i class="ph ph-x-circle"></i>';
+                iconEl.className = 'w-10 h-10 rounded-full flex items-center justify-center text-2xl shrink-0 bg-rose-100 text-rose-600';
+            } else {
+                iconEl.innerHTML = '<i class="ph ph-info"></i>';
+                iconEl.className = 'w-10 h-10 rounded-full flex items-center justify-center text-2xl shrink-0 bg-blue-100 text-blue-600';
+            }
+            
+            alertEl.classList.remove('hidden');
+            setTimeout(() => {
+                boxEl.classList.remove('scale-95', 'opacity-0');
+                boxEl.classList.add('scale-100', 'opacity-100');
+            }, 10);
+        };
 
-        // UI Helpers
-        window.showAlert = function(msg) {
-            document.getElementById('alertMessage').innerText = msg;
-            document.getElementById('alertModal').classList.remove('hidden');
-        }
+        window.closeAlert = function() {
+            const alertEl = document.getElementById('customAlert');
+            const boxEl = document.getElementById('alertBox');
+            boxEl.classList.remove('scale-100', 'opacity-100');
+            boxEl.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => { alertEl.classList.add('hidden'); }, 300);
+        };
 
-        // Tab System
-        window.switchTab = function(tabName) {
-            ['single', 'batch', 'project'].forEach(t => {
-                document.getElementById('tab-' + t).style.display = t === tabName ? 'block' : 'none';
-                document.getElementById('btnTab-' + t).className = t === tabName 
-                    ? 'flex-1 py-2 text-sm font-semibold rounded-lg bg-white text-blue-600 shadow-sm transition-all'
-                    : 'flex-1 py-2 text-sm font-medium rounded-lg text-slate-500 hover:text-slate-700 transition-all';
+        // Initialize Map
+        function initMap() {
+            const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
             });
-            if (tabName === 'project') loadProjects();
-        }
+            const satelliteLayer = L.tileLayer('http://mt0.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}', {
+                attribution: '&copy; Google Maps',
+                maxZoom: 20
+            });
 
-        async function initAuth() {
-            try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-                authInitialized = true;
+            map = L.map('map', {
+                center: [13.7563, 100.5018],
+                zoom: 6,
+                layers: [satelliteLayer] 
+            });
+
+            const baseMaps = {
+                "ภาพถ่ายดาวเทียม (Google)": satelliteLayer,
+                "แผนที่ถนน (OSM)": osmLayer
+            };
+            L.control.layers(baseMaps).addTo(map);
+            markersGroup = L.featureGroup().addTo(map);
+
+            // Map Click for adding GPS Points
+            map.on('click', function(e) {
+                if(document.getElementById('mapWrapper').classList.contains('map-fullscreen')) return;
+                
+                const lat = e.latlng.lat;
+                const lng = e.latlng.lng;
+                
+                const popupContent = document.createElement('div');
+                popupContent.className = 'text-center p-2';
+                popupContent.innerHTML = `
+                    <div class="font-semibold text-slate-800 mb-2">พิกัดที่คุณเลือก</div>
+                    <div class="text-xs text-slate-500 mb-3">${lat.toFixed(6)}, ${lng.toFixed(6)}</div>
+                    <button id="addPointBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm w-full transition-colors shadow-sm">
+                        + บันทึกเป็นจุดใหม่
+                    </button>
+                `;
+                
+                const popup = L.popup().setLatLng(e.latlng).setContent(popupContent).openOn(map);
+                    
+                setTimeout(() => {
+                    const btn = document.getElementById('addPointBtn');
+                    if(btn) {
+                        btn.addEventListener('click', () => {
+                            const zone = lng < 102 ? 47 : 48;
+                            const epsg = zone === 47 ? "EPSG:24047" : "EPSG:24048";
+                            const indianCoords = proj4("EPSG:4326", epsg, [lng, lat]);
+                            
+                            const newPoint = {
+                                name: `Point ${csvResults.length + 1}`,
+                                easting: indianCoords[0].toFixed(3),
+                                northing: indianCoords[1].toFixed(3),
+                                zone: zone,
+                                wgsLat: lat,
+                                wgsLon: lng
+                            };
+                            
+                            csvResults.push(newPoint);
+                            drawMap(csvResults);
+                            map.closePopup();
+                            showAlert('สำเร็จ', 'เพิ่มจุดพิกัดใหม่ลงในโครงการเรียบร้อยแล้ว', 'success');
+                            document.getElementById('saveProjectBtn').classList.remove('hidden');
+                        });
+                    }
+                }, 100);
+            });
+        }
+        
+        window.onload = function() {
+            initMap();
+            signInAnonymously(auth).then(() => {
                 loadProjects();
-            } catch (err) {
-                console.warn("Auth Error, falling back to anonymous", err);
-                try {
-                    await signInAnonymously(auth);
-                    authInitialized = true;
-                    loadProjects();
-                } catch (e2) {
-                    console.error("Critical Auth Error", e2);
-                }
+            }).catch((error) => {
+                console.warn("Auth Error, continuing without login.", error);
+                loadProjects();
+            });
+        };
+
+        window.switchTab = function(tab) {
+            document.getElementById('content-single').classList.add('hidden');
+            document.getElementById('content-csv').classList.add('hidden');
+            document.getElementById('content-projects').classList.add('hidden');
+            
+            document.getElementById('tab-single').className = "flex-1 py-1.5 text-sm font-medium rounded-md text-slate-500 hover:text-slate-700 transition-all";
+            document.getElementById('tab-csv').className = "flex-1 py-1.5 text-sm font-medium rounded-md text-slate-500 hover:text-slate-700 transition-all";
+            document.getElementById('tab-projects').className = "flex-1 py-1.5 text-sm font-medium rounded-md text-slate-500 hover:text-slate-700 transition-all";
+            
+            document.getElementById(`content-${tab}`).classList.remove('hidden');
+            document.getElementById(`tab-${tab}`).className = "flex-1 py-1.5 text-sm font-medium rounded-md bg-white shadow-sm text-blue-600 transition-all";
+        
+            if(tab === 'projects') loadProjects();
+        };
+
+        window.updateLineStyle = function() {
+            currentLineStyle = document.getElementById('lineStyleSelect').value;
+            if(csvResults && csvResults.length > 0) {
+                drawMap(csvResults, false); // false = no re-zoom
+            }
+        };
+
+        function convertPoint(easting, northing, zone) {
+            const epsg = zone == 47 ? "EPSG:24047" : "EPSG:24048";
+            try {
+                return proj4(epsg, "EPSG:4326", [parseFloat(easting), parseFloat(northing)]);
+            } catch(e) {
+                return null;
             }
         }
 
@@ -373,458 +420,596 @@
             iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
             iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
             shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-            iconSize: [18, 30], iconAnchor: [9, 30], popupAnchor: [1, -26], shadowSize: [30, 30]
+            iconSize: [18, 30],
+            iconAnchor: [9, 30],
+            popupAnchor: [1, -24],
+            shadowSize: [30, 30]
         });
 
-        function initMap() {
-            const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' });
-            const satLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 20, attribution: '© Google' });
+        function drawMap(data, fitBounds = true) {
+            markersGroup.clearLayers();
+            if (polygonLayer) {
+                map.removeLayer(polygonLayer);
+                polygonLayer = null;
+            }
             
-            map = L.map('map', { layers: [osmLayer] }).setView([13.7563, 100.5018], 6);
-            L.control.layers({ "แผนที่ถนน (OSM)": osmLayer, "ภาพดาวเทียม (Google)": satLayer }).addTo(map);
-            markersGroup = L.layerGroup().addTo(map);
-
-            // Map Click (Add point logic)
-            map.on('click', function(e) {
-                if(isNavigating) return; 
-                const lat = e.latlng.lat;
-                const lng = e.latlng.lng;
-                const zone = lng < 102 ? 47 : 48;
-                
-                // แปลง WGS84 กลับเป็น Indian1975 โชว์ในกล่อง
-                const indianUtm = proj4('EPSG:4326', `EPSG:240${zone}`, [lng, lat]);
-                
-                document.getElementById('addPointEasting').value = indianUtm[0].toFixed(3);
-                document.getElementById('addPointNorthing').value = indianUtm[1].toFixed(3);
-                document.getElementById('addPointZone').value = zone;
-                document.getElementById('addPointName').value = `PT_${Math.floor(Math.random()*1000)}`;
-                document.getElementById('addPointModal').classList.remove('hidden');
+            let utmPoints = [];
+            data.forEach((p) => {
+                if (p.wgsLat && p.wgsLon) {
+                    const marker = L.marker([p.wgsLat, p.wgsLon], {icon: smallIcon}).addTo(markersGroup);
+                    
+                    const popupHTML = `
+                        <div class="text-sm font-bold text-slate-800 mb-1 border-b pb-1">${p.name || 'พิกัด'} (Zone ${p.zone})</div>
+                        <div class="text-xs text-slate-600">E: ${p.easting}</div>
+                        <div class="text-xs text-slate-600 mb-2">N: ${p.northing}</div>
+                        <button onclick="startNavigation(${p.wgsLat}, ${p.wgsLon})" class="w-full bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs py-1.5 rounded transition-colors font-medium">
+                            <i class="ph ph-navigation-arrow inline-block"></i> นำทางไปจุดนี้
+                        </button>
+                    `;
+                    marker.bindPopup(popupHTML);
+                    utmPoints.push({x: parseFloat(p.easting), y: parseFloat(p.northing)});
+                }
             });
+
+            if(fitBounds && markersGroup.getLayers().length > 0) {
+                map.fitBounds(markersGroup.getBounds(), {padding: [30, 30]});
+            }
+
+            // Draw Lines/Polygons based on style
+            if (data.length >= 2 && currentLineStyle !== 'none') {
+                const latlngs = data.filter(p => p.wgsLat && p.wgsLon).map(p => [p.wgsLat, p.wgsLon]);
+                
+                if (currentLineStyle === 'polygon' && latlngs.length >= 3) {
+                    polygonLayer = L.polygon(latlngs, {color: '#3b82f6', weight: 2, fillColor: '#60a5fa', fillOpacity: 0.3}).addTo(map);
+                    
+                    // Calculate Area
+                    const areaSqM = calculateAreaUTM(utmPoints);
+                    const rai = Math.floor(areaSqM / 1600);
+                    const ngan = Math.floor((areaSqM % 1600) / 400);
+                    const sqWa = ((areaSqM % 400) / 4).toFixed(1);
+                    
+                    document.getElementById('areaResult').classList.remove('hidden');
+                    document.getElementById('areaText').innerText = `${rai} ไร่ ${ngan} งาน ${sqWa} ตร.ว. (${areaSqM.toFixed(2)} ตร.ม.)`;
+                } 
+                else if (currentLineStyle === 'polyline' || (currentLineStyle === 'polygon' && latlngs.length === 2)) {
+                    polygonLayer = L.polyline(latlngs, {color: '#3b82f6', weight: 3}).addTo(map);
+                    document.getElementById('areaResult').classList.add('hidden');
+                }
+            } else {
+                document.getElementById('areaResult').classList.add('hidden');
+            }
         }
 
-        // Add Point Confirm
-        window.closeAddPointModal = () => document.getElementById('addPointModal').classList.add('hidden');
-        window.confirmAddPoint = function() {
-            const name = document.getElementById('addPointName').value || 'NewPoint';
-            const e = parseFloat(document.getElementById('addPointEasting').value);
-            const n = parseFloat(document.getElementById('addPointNorthing').value);
-            const z = parseInt(document.getElementById('addPointZone').value);
+        function calculateAreaUTM(points) {
+            let area = 0;
+            const j = points.length - 1;
+            for (let i = 0; i < points.length; i++) {
+                const p1 = points[i];
+                const p2 = points[i === j ? 0 : i + 1];
+                area += (p1.x * p2.y) - (p2.x * p1.y);
+            }
+            return Math.abs(area / 2);
+        }
+
+        document.getElementById('convertForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const zone = document.getElementById('zoneInput').value;
+            const easting = document.getElementById('eastingInput').value;
+            const northing = document.getElementById('northingInput').value;
             
-            const wgsUtm = proj4(`EPSG:240${z}`, `EPSG:326${z}`, [e, n]);
-            const latLng = proj4(`EPSG:240${z}`, 'EPSG:4326', [e, n]);
-            
-            currentProjectData.push({
-                name: name, e_indian: e, n_indian: n, zone: z,
-                e_wgs: wgsUtm[0], n_wgs: wgsUtm[1], lat: latLng[1], lng: latLng[0]
-            });
-            
-            drawMapPoints(currentProjectData);
-            closeAddPointModal();
-            window.showAlert('เพิ่มจุดพิกัดลงในแผนที่เรียบร้อย (อย่าลืมกดบันทึกโครงการด้วยนะครับ)');
+            const wgsCoords = convertPoint(easting, northing, zone);
+            if(wgsCoords) {
+                const resultObj = {
+                    name: 'จุดพิกัดเดียว',
+                    zone: zone,
+                    easting: easting,
+                    northing: northing,
+                    wgsLon: wgsCoords[0],
+                    wgsLat: wgsCoords[1]
+                };
+                csvResults = [resultObj];
+                document.getElementById('resultCard').classList.remove('hidden');
+                document.getElementById('saveProjectBtn').classList.add('hidden');
+                
+                document.getElementById('singleResultDetails').innerHTML = `
+                    <div class="bg-slate-50 p-3 rounded-lg border border-slate-100 flex justify-between items-center">
+                        <div>
+                            <div class="text-xs text-slate-500 mb-0.5">Latitude</div>
+                            <div class="font-mono text-sm font-semibold">${wgsCoords[1].toFixed(6)}</div>
+                        </div>
+                        <button onclick="copyText('${wgsCoords[1].toFixed(6)}')" class="p-2 text-slate-400 hover:text-blue-600"><i class="ph ph-copy text-lg"></i></button>
+                    </div>
+                    <div class="bg-slate-50 p-3 rounded-lg border border-slate-100 flex justify-between items-center">
+                        <div>
+                            <div class="text-xs text-slate-500 mb-0.5">Longitude</div>
+                            <div class="font-mono text-sm font-semibold">${wgsCoords[0].toFixed(6)}</div>
+                        </div>
+                        <button onclick="copyText('${wgsCoords[0].toFixed(6)}')" class="p-2 text-slate-400 hover:text-blue-600"><i class="ph ph-copy text-lg"></i></button>
+                    </div>
+                `;
+                drawMap(csvResults);
+            }
+        });
+
+        window.copyText = function(text) {
+            navigator.clipboard.writeText(text);
+            showAlert('คัดลอกสำเร็จ', 'คัดลอกค่าพิกัดเรียบร้อยแล้ว', 'success');
         };
 
-        // Single Convert
-        window.convertSingle = function() {
-            const easting = parseFloat(document.getElementById('easting').value);
-            const northing = parseFloat(document.getElementById('northing').value);
-            const zone = document.getElementById('zone').value;
-            const ptName = document.getElementById('ptName').value || 'จุดค้นหา';
-            if(isNaN(easting) || isNaN(northing)) { window.showAlert('กรุณากรอกค่าพิกัดให้ถูกต้อง'); return; }
+        document.getElementById('csvFileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
 
-            const sourceProj = `EPSG:240${zone}`;
-            const targetUtmProj = `EPSG:326${zone}`;
-            const wgsUtm = proj4(sourceProj, targetUtmProj, [easting, northing]);
-            const latLng = proj4(sourceProj, 'EPSG:4326', [easting, northing]);
-
-            document.getElementById('resUTMX').innerText = wgsUtm[0].toFixed(3);
-            document.getElementById('resUTMY').innerText = wgsUtm[1].toFixed(3);
-            document.getElementById('resLat').innerText = latLng[1].toFixed(6);
-            document.getElementById('resLng').innerText = latLng[0].toFixed(6);
-            document.getElementById('resultBox').classList.remove('hidden');
-
-            markersGroup.clearLayers();
-            if(polygonLayer) map.removeLayer(polygonLayer);
-            
-            const m = L.marker([latLng[1], latLng[0]], {icon: smallIcon}).addTo(markersGroup);
-            m.bindPopup(`<b>${ptName}</b><br><button onclick="startNavigation(${latLng[1]}, ${latLng[0]}, '${ptName}')" class="mt-2 bg-blue-600 text-white text-xs px-3 py-1 rounded">นำทางไปจุดนี้</button>`).openPopup();
-            map.setView([latLng[1], latLng[0]], 16);
-        };
-
-        window.downloadTemplate = function() {
-            const csvContent = "Name,Easting,Northing,Zone\nPT1,634000.12,1850000.34,47\nPT2,634500.00,1850000.00,47\nPT3,634500.00,1850500.00,47";
-            const blob = new Blob(["\uFEFF"+csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.download = "template_indian1975.csv";
-            link.click();
-        };
-
-        window.processCSV = function() {
-            const fileInput = document.getElementById('csvFileInput');
-            if(!fileInput.files.length) { window.showAlert("กรุณาเลือกไฟล์ CSV ก่อน"); return; }
-            
-            Papa.parse(fileInput.files[0], {
-                header: true, skipEmptyLines: true,
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
                 complete: function(results) {
-                    currentProjectData = [];
+                    csvResults = [];
+                    let successCount = 0;
+                    
                     results.data.forEach(row => {
-                        const name = row.Name || row.name || 'N/A';
-                        const e = parseFloat(row.Easting || row.easting || row.X || row.x);
-                        const n = parseFloat(row.Northing || row.northing || row.Y || row.y);
-                        const z = parseInt(row.Zone || row.zone || 47);
-
-                        if(!isNaN(e) && !isNaN(n)) {
-                            const wgsUtm = proj4(`EPSG:240${z}`, `EPSG:326${z}`, [e, n]);
-                            const latLng = proj4(`EPSG:240${z}`, 'EPSG:4326', [e, n]);
-                            currentProjectData.push({
-                                name: name, e_indian: e, n_indian: n, zone: z,
-                                e_wgs: wgsUtm[0], n_wgs: wgsUtm[1], lat: latLng[1], lng: latLng[0]
-                            });
+                        const name = row['Name'] || row['name'] || `Point ${successCount+1}`;
+                        const zone = row['Zone'] || row['zone'] || "47";
+                        const easting = row['Easting'] || row['easting'] || row['X'] || row['x'];
+                        const northing = row['Northing'] || row['northing'] || row['Y'] || row['y'];
+                        
+                        if(easting && northing) {
+                            const wgsCoords = convertPoint(easting, northing, zone);
+                            if(wgsCoords) {
+                                csvResults.push({
+                                    name: name,
+                                    zone: zone,
+                                    easting: easting,
+                                    northing: northing,
+                                    wgsLon: wgsCoords[0],
+                                    wgsLat: wgsCoords[1]
+                                });
+                                successCount++;
+                            }
                         }
                     });
-                    
-                    if(currentProjectData.length > 0) {
-                        drawMapPoints(currentProjectData);
-                        document.getElementById('btnDownloadCSV').disabled = false;
-                        document.getElementById('btnDownloadCSV').classList.remove('opacity-50','cursor-not-allowed');
-                        document.getElementById('saveProjectSection').classList.remove('hidden');
-                        window.showAlert(`ประมวลผลสำเร็จ ${currentProjectData.length} จุด`);
+
+                    if(successCount > 0) {
+                        document.getElementById('resultCard').classList.remove('hidden');
+                        document.getElementById('downloadBtn').classList.remove('hidden');
+                        document.getElementById('saveProjectBtn').classList.remove('hidden');
+                        document.getElementById('singleResultDetails').innerHTML = `
+                            <div class="text-center py-4 bg-slate-50 rounded-xl border border-slate-100">
+                                <i class="ph ph-check-circle text-3xl text-green-500 mb-2"></i>
+                                <div class="text-slate-800 font-semibold">แปลงสำเร็จ ${successCount} จุด</div>
+                                <div class="text-xs text-slate-500">สามารถดูจุดทั้งหมดบนแผนที่ด้านขวา</div>
+                            </div>
+                        `;
+                        drawMap(csvResults);
+                    } else {
+                        showAlert('ข้อผิดพลาด', 'ไม่พบข้อมูลที่ถูกต้องในไฟล์ CSV', 'error');
                     }
                 }
             });
+        });
+
+        window.downloadTemplate = function() {
+            const template = "Name,Zone,Easting,Northing\nหมุดที่ 1,47,600000,1500000\nหมุดที่ 2,47,600100,1500000\nหมุดที่ 3,47,600100,1500100";
+            downloadFile(template, 'template_indian1975.csv');
         };
 
-        function drawMapPoints(dataList) {
-            markersGroup.clearLayers();
-            if(polygonLayer) map.removeLayer(polygonLayer);
-            
-            if(dataList.length === 0) return;
+        window.downloadResults = function() {
+            if(csvResults.length === 0) return;
+            const header = "\uFEFFName,Zone,Indian_Easting,Indian_Northing,WGS84_Lat,WGS84_Lon\n";
+            const rows = csvResults.map(p => `${p.name},${p.zone},${p.easting},${p.northing},${p.wgsLat.toFixed(6)},${p.wgsLon.toFixed(6)}`).join("\n");
+            downloadFile(header + rows, 'converted_wgs84.csv');
+        };
 
-            let latlngs = [];
-            dataList.forEach(pt => {
-                let m = L.marker([pt.lat, pt.lng], {icon: smallIcon}).addTo(markersGroup);
-                m.bindPopup(`<b>${pt.name}</b><br><button onclick="startNavigation(${pt.lat}, ${pt.lng}, '${pt.name}')" class="mt-2 bg-blue-600 text-white text-xs px-3 py-1 rounded">นำทางไปจุดนี้</button>`);
-                latlngs.push([pt.lat, pt.lng]);
-            });
-
-            if(dataList.length >= 3) {
-                polygonLayer = L.polygon(latlngs, {color: '#3b82f6', weight: 2, fillColor: '#60a5fa', fillOpacity: 0.3}).addTo(map);
-                calculateArea(dataList);
-                document.getElementById('areaResultBox').classList.remove('hidden');
-            } else {
-                document.getElementById('areaResultBox').classList.add('hidden');
-            }
-
-            const bounds = L.latLngBounds(latlngs);
-            map.fitBounds(bounds, {padding: [30, 30]});
-        }
-
-        function calculateArea(pts) {
-            let area = 0;
-            for(let i=0; i<pts.length; i++) {
-                let j = (i+1)%pts.length;
-                area += pts[i].e_wgs * pts[j].n_wgs;
-                area -= pts[j].e_wgs * pts[i].n_wgs;
-            }
-            area = Math.abs(area) / 2;
-            
-            let rai = Math.floor(area / 1600);
-            let rem = area % 1600;
-            let ngan = Math.floor(rem / 400);
-            let wa = (rem % 400) / 4;
-
-            document.getElementById('areaRaiNganWa').innerText = `${rai} ไร่ ${ngan} งาน ${wa.toFixed(1)} ตร.ว.`;
-            document.getElementById('areaSqm').innerText = area.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
-        }
-
-        window.downloadCSV = function() {
-            if(currentProjectData.length === 0) return;
-            let csv = "Name,Indian_Easting,Indian_Northing,Zone,WGS84_Easting,WGS84_Northing,Latitude,Longitude\n";
-            currentProjectData.forEach(p => {
-                csv += `${p.name},${p.e_indian.toFixed(3)},${p.n_indian.toFixed(3)},${p.zone},${p.e_wgs.toFixed(3)},${p.n_wgs.toFixed(3)},${p.lat.toFixed(6)},${p.lng.toFixed(6)}\n`;
-            });
-            const blob = new Blob(["\uFEFF"+csv], { type: 'text/csv;charset=utf-8;' });
+        window.downloadFile = function(content, filename) {
+            const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.download = "Converted_WGS84.csv";
+            link.setAttribute("download", filename);
+            document.body.appendChild(link);
             link.click();
-        };
+            document.body.removeChild(link);
+        }
 
         window.loadProjects = async function() {
-            if(!authInitialized || !auth.currentUser) return;
+            const listEl = document.getElementById('projectsList');
+            listEl.innerHTML = '<div class="text-center text-slate-500 text-sm py-8"><div class="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full mx-auto mb-2"></div>กำลังดึงข้อมูลจากฐานข้อมูล...</div>';
+            
             try {
-                const snap = await getDocs(publicProjectsRef);
-                savedProjects = [];
-                snap.forEach(doc => savedProjects.push({id: doc.id, ...doc.data()}));
-                savedProjects.sort((a,b) => new Date(b.date) - new Date(a.date));
-                renderProjectList();
-            } catch(err) {
-                console.error(err);
+                let sortedDocs = [];
+                let hasPermissionError = false;
+                
+                // ค้นหางานจากทุกโฟลเดอร์ที่เป็นไปได้ในอดีต มารวมกัน
+                for (const path of searchPaths) {
+                    try {
+                        const q = query(collection(db, path));
+                        const querySnapshot = await getDocs(q);
+                        querySnapshot.forEach((docSnap) => {
+                            const data = docSnap.data();
+                            if (data) {
+                                // ป้องกันดึงข้อมูลซ้ำซ้อน
+                                if (!sortedDocs.find(d => d.id === docSnap.id)) {
+                                    sortedDocs.push({ id: docSnap.id, _sourcePath: path, ...data });
+                                }
+                            }
+                        });
+                    } catch (err) {
+                        if(err.message.includes("Missing or insufficient permissions")) {
+                            hasPermissionError = true;
+                        }
+                    }
+                }
+
+                if (hasPermissionError && sortedDocs.length === 0) {
+                     listEl.innerHTML = `
+                        <div class="text-center p-4 bg-rose-50 rounded-xl border border-rose-200">
+                            <i class="ph ph-warning-circle text-2xl text-rose-500 mb-1"></i>
+                            <div class="text-rose-700 text-sm font-bold">ไม่ได้รับอนุญาตให้ดึงข้อมูล (Permission Denied)</div>
+                            <div class="text-xs text-rose-600 mt-1">ฐานข้อมูล Firebase ของคุณอาจตั้งค่า Rules ปิดกั้นการอ่านไว้ หรือหมดอายุโหมดทดสอบ (Test Mode)</div>
+                        </div>`;
+                     return;
+                }
+
+                // Sort ป้องกัน NaN วันที่
+                sortedDocs.sort((a, b) => {
+                    const dateA = a.date ? new Date(a.date).getTime() : 0;
+                    const dateB = b.date ? new Date(b.date).getTime() : 0;
+                    const timeA = isNaN(dateA) ? 0 : dateA;
+                    const timeB = isNaN(dateB) ? 0 : dateB;
+                    return timeB - timeA;
+                });
+
+                if (sortedDocs.length === 0) {
+                    listEl.innerHTML = '<div class="text-center text-slate-500 text-sm py-8 bg-slate-50 rounded-xl border border-slate-200">ยังไม่มีโครงการที่บันทึกไว้</div>';
+                    return;
+                }
+
+                let html = '';
+                sortedDocs.forEach((proj) => {
+                    let dateStr = "ไม่ทราบวันที่";
+                    if (proj.date) {
+                        try {
+                            const d = new Date(proj.date);
+                            if(!isNaN(d.getTime())) {
+                                dateStr = d.toLocaleDateString('th-TH') + ' ' + d.toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit'});
+                            }
+                        } catch(e){}
+                    }
+                    
+                    // ระบบค้นหาและดึงข้อมูลพิกัด (Aggressive Data Parsing)
+                    let pts = [];
+                    if (proj.data) {
+                        if (Array.isArray(proj.data)) {
+                             pts = proj.data;
+                        } else if (typeof proj.data === 'string') {
+                             try { 
+                                 pts = JSON.parse(proj.data); 
+                                 if (!Array.isArray(pts)) pts = []; // Ensure it parsed into an array
+                             } catch(e) { console.warn("Failed to parse string data", e); }
+                        } else if (typeof proj.data === 'object') {
+                             // Handle edge case where array was saved as a map/object { "0": {...}, "1": {...} }
+                             try {
+                                 pts = Object.values(proj.data);
+                             } catch (e) {}
+                        }
+                    }
+                    
+                    // Fallback to checking for 'csvResults' field if 'data' is empty
+                    if (pts.length === 0 && proj.csvResults && Array.isArray(proj.csvResults)) {
+                        pts = proj.csvResults;
+                    }
+                    
+                    // อัปเดตข้อมูลกลับลงไปใน proj เพื่อให้ปุ่มใช้งานดึงไปใช้ได้ถูกต้อง
+                    proj.parsedData = pts;
+                    
+                    const count = pts.length;
+                    const projName = proj.name || "โครงการไม่มีชื่อ";
+
+                    html += `
+                        <div class="bg-white border border-slate-200 p-3 rounded-xl shadow-sm hover:border-blue-300 transition-colors flex justify-between items-center group">
+                            <div class="overflow-hidden">
+                                <div class="font-semibold text-slate-800 text-sm truncate pr-2" title="${projName}">${projName}</div>
+                                <div class="text-[11px] text-slate-500 mt-0.5 flex gap-2">
+                                    <span class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">${dateStr}</span>
+                                    <span class="${count === 0 ? 'text-rose-500 font-medium' : ''}">มี ${count} จุดพิกัด</span>
+                                </div>
+                            </div>
+                            <div class="flex gap-1 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
+                                <button onclick='loadProjectToMap(${JSON.stringify(proj).replace(/'/g, "&apos;")})' class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="เปิดดูบนแผนที่">
+                                    <i class="ph ph-eye text-lg"></i>
+                                </button>
+                                <button onclick='openEditModal(${JSON.stringify(proj).replace(/'/g, "&apos;")})' class="p-2 text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors" title="แก้ไขโครงการ">
+                                    <i class="ph ph-pencil-simple text-lg"></i>
+                                </button>
+                                <button onclick="deleteProject('${proj.id}', '${proj._sourcePath}')" class="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors" title="ลบโครงการ">
+                                    <i class="ph ph-trash text-lg"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+                listEl.innerHTML = html;
+            } catch (e) {
+                listEl.innerHTML = '<div class="text-center text-rose-500 text-sm py-8">เกิดข้อผิดพลาดในการดึงข้อมูล</div>';
             }
         };
 
-        function renderProjectList() {
-            const list = document.getElementById('projectList');
-            list.innerHTML = '';
-            if(savedProjects.length === 0) {
-                list.innerHTML = '<div class="text-sm text-slate-400 py-2">ยังไม่มีโครงการที่บันทึกไว้</div>';
+        window.showSaveProjectModal = function() {
+            document.getElementById('saveModal').classList.remove('hidden');
+            if(csvResults.length > 0 && !document.getElementById('projectNameInput').value) {
+                 document.getElementById('projectNameInput').value = "โครงการแปลงพิกัด (" + new Date().toLocaleDateString('th-TH') + ")";
+            }
+        };
+
+        window.closeSaveModal = function() {
+            document.getElementById('saveModal').classList.add('hidden');
+        };
+
+        window.confirmSaveProject = async function() {
+            const name = document.getElementById('projectNameInput').value;
+            if(!name) {
+                showAlert('แจ้งเตือน', 'กรุณาระบุชื่อโครงการ', 'error');
                 return;
             }
-            savedProjects.forEach(proj => {
-                const dateStr = new Date(proj.date).toLocaleDateString('th-TH');
-                list.innerHTML += `
-                    <div class="bg-white border border-slate-200 rounded-xl p-3 flex justify-between items-center hover:border-blue-300 transition-colors">
-                        <div class="overflow-hidden">
-                            <h4 class="text-sm font-bold text-slate-700 truncate">${proj.name}</h4>
-                            <p class="text-xs text-slate-500">${dateStr} • ${proj.pointsCount} จุด</p>
-                        </div>
-                        <div class="flex gap-1">
-                            <button onclick="openProject('${proj.id}')" class="p-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100" title="เปิดดู"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg></button>
-                            <button onclick="editProject('${proj.id}')" class="p-2 text-amber-600 bg-amber-50 rounded-lg hover:bg-amber-100" title="แก้ไข"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button>
-                            <button onclick="confirmDelete('${proj.id}')" class="p-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100" title="ลบ"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
-                        </div>
-                    </div>
-                `;
-            });
-        }
-
-        window.saveProject = async function() {
-            if(!auth.currentUser) return;
-            if(currentProjectData.length === 0) { window.showAlert('ไม่มีข้อมูลสำหรับบันทึก'); return; }
-            
-            const nameInput = document.getElementById('newProjectName');
-            const name = nameInput.value.trim() || `โครงการ ${new Date().toLocaleDateString('th-TH')}`;
-            
             try {
-                const newDoc = {
-                    name: name, date: new Date().toISOString(), pointsCount: currentProjectData.length,
-                    data: currentProjectData, userId: auth.currentUser.uid
-                };
-                await addDoc(publicProjectsRef, newDoc);
-                nameInput.value = '';
-                window.showAlert('บันทึกโครงการสำเร็จ!');
-                loadProjects();
-                switchTab('project');
-            } catch(err) {
-                console.error(err);
-                window.showAlert('เกิดข้อผิดพลาดในการบันทึก');
+                await addDoc(collection(db, saveCollectionPath), {
+                    name: name,
+                    date: new Date().toISOString(),
+                    pointsCount: csvResults.length,
+                    data: csvResults
+                });
+                closeSaveModal();
+                showAlert('บันทึกสำเร็จ', 'โครงการถูกบันทึกขึ้นระบบเรียบร้อยแล้ว', 'success');
+                if(document.getElementById('content-projects').classList.contains('hidden') == false){
+                    loadProjects();
+                }
+            } catch (e) {
+                showAlert('ข้อผิดพลาด', 'ไม่สามารถบันทึกได้ กรุณาลองใหม่', 'error');
             }
         };
 
-        window.openProject = function(id) {
-            const proj = savedProjects.find(p => p.id === id);
-            if(proj) {
-                currentProjectData = proj.data;
-                drawMapPoints(currentProjectData);
-                document.getElementById('btnDownloadCSV').disabled = false;
-                document.getElementById('btnDownloadCSV').classList.remove('opacity-50','cursor-not-allowed');
-                window.showAlert(`เปิด ${proj.name} เรียบร้อยแล้ว`);
+        window.deleteProject = async function(id, sourcePath) {
+            if(confirm("ยืนยันการลบโครงการนี้?")) {
+                try {
+                    const pathToDelete = sourcePath || saveCollectionPath;
+                    await deleteDoc(doc(db, pathToDelete, id));
+                    showAlert('สำเร็จ', 'ลบโครงการเรียบร้อยแล้ว', 'success');
+                    loadProjects();
+                } catch (e) {
+                    showAlert('ข้อผิดพลาด', 'ลบข้อมูลไม่สำเร็จ', 'error');
+                }
             }
         };
 
-        let deleteIdTarget = null;
-        window.confirmDelete = function(id) {
-            deleteIdTarget = id;
-            document.getElementById('confirmDeleteModal').classList.remove('hidden');
-        };
-        
-        document.getElementById('confirmDeleteBtn').onclick = async function() {
-            if(!deleteIdTarget) return;
-            try {
-                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'projects', deleteIdTarget));
-                document.getElementById('confirmDeleteModal').classList.add('hidden');
-                loadProjects();
-            } catch(err) { console.error(err); }
+        window.loadProjectToMap = function(proj) {
+            // ใช้ข้อมูลที่ Parse มาแล้ว
+            let pts = proj.parsedData || [];
+            
+            if (pts.length === 0) {
+                 showAlert('ข้อมูลว่างเปล่า', 'โครงการนี้ไม่มีข้อมูลพิกัดถูกบันทึกไว้ (ข้อมูลอาจสูญหายตอนบันทึก)', 'error');
+                 return; // Stop loading if empty
+            }
+
+            csvResults = pts;
+            currentProjectName = proj.name || "โครงการไม่มีชื่อ";
+            
+            document.getElementById('resultCard').classList.remove('hidden');
+            document.getElementById('saveProjectBtn').classList.remove('hidden');
+            document.getElementById('singleResultDetails').innerHTML = `
+                <div class="text-center py-4 bg-slate-50 rounded-xl border border-slate-100">
+                    <i class="ph ph-map-trifold text-3xl text-blue-500 mb-2"></i>
+                    <div class="text-slate-800 font-semibold">${currentProjectName}</div>
+                    <div class="text-xs text-slate-500">โหลดข้อมูลจำนวน ${pts.length} จุด ลงบนแผนที่แล้ว</div>
+                </div>
+            `;
+            drawMap(csvResults);
+            switchTab('csv'); // สลับไปหน้าจอแสดงผล
         };
 
-        let currentEditId = null;
-        window.closeEditModal = () => document.getElementById('editProjectModal').classList.add('hidden');
-        window.editProject = function(id) {
-            currentEditId = id;
-            const proj = savedProjects.find(p => p.id === id);
-            if(!proj) return;
+        let currentEditProjectId = null;
+        let currentEditSourcePath = null;
+        window.openEditModal = function(proj) {
+            currentEditProjectId = proj.id;
+            currentEditSourcePath = proj._sourcePath || saveCollectionPath;
+            document.getElementById('editProjectName').value = proj.name || "โครงการไม่มีชื่อ";
             
-            document.getElementById('editProjectName').value = proj.name;
-            const tbody = document.getElementById('editProjectTableBody');
+            // ใช้ข้อมูลที่ Parse มาแล้ว
+            csvResults = proj.parsedData || []; 
+            
+            renderEditTable();
+            document.getElementById('editModal').classList.remove('hidden');
+        };
+
+        window.closeEditModal = function() {
+            document.getElementById('editModal').classList.add('hidden');
+        };
+
+        window.renderEditTable = function() {
+            const tbody = document.getElementById('editTableBody');
             tbody.innerHTML = '';
             
-            proj.data.forEach((pt, i) => addRowToEditTable(pt, i));
-            document.getElementById('editProjectModal').classList.remove('hidden');
+            csvResults.forEach((p, index) => {
+                const tr = document.createElement('tr');
+                tr.className = "border-b border-slate-100 hover:bg-slate-50";
+                tr.innerHTML = `
+                    <td class="p-2 text-center text-slate-500">${index + 1}</td>
+                    <td class="p-2"><input type="text" value="${p.name || ''}" class="w-full border rounded px-2 py-1 text-sm bg-white outline-none focus:border-blue-500" onchange="updatePointData(${index}, 'name', this.value)"></td>
+                    <td class="p-2">
+                        <select class="w-full border rounded px-2 py-1 text-sm bg-white outline-none focus:border-blue-500" onchange="updatePointData(${index}, 'zone', parseInt(this.value))">
+                            <option value="47" ${p.zone == 47 ? 'selected' : ''}>47N</option>
+                            <option value="48" ${p.zone == 48 ? 'selected' : ''}>48N</option>
+                        </select>
+                    </td>
+                    <td class="p-2"><input type="number" step="0.001" value="${p.easting}" class="w-full border rounded px-2 py-1 text-sm bg-white outline-none focus:border-blue-500" onchange="updatePointData(${index}, 'easting', this.value)"></td>
+                    <td class="p-2"><input type="number" step="0.001" value="${p.northing}" class="w-full border rounded px-2 py-1 text-sm bg-white outline-none focus:border-blue-500" onchange="updatePointData(${index}, 'northing', this.value)"></td>
+                    <td class="p-2 text-center">
+                        <button onclick="removePointFromEdit(${index})" class="text-rose-500 hover:bg-rose-50 p-1.5 rounded transition-colors" title="ลบจุดนี้">
+                            <i class="ph ph-trash"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
         };
 
-        function addRowToEditTable(pt = null, i = null) {
-            const tbody = document.getElementById('editProjectTableBody');
-            const idx = i !== null ? i : tbody.children.length;
-            const ptName = pt ? pt.name : `PT_${idx+1}`;
-            const e = pt ? pt.e_indian : '';
-            const n = pt ? pt.n_indian : '';
-            const z = pt ? pt.zone : '47';
-            
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td class="p-2 border-b text-center text-slate-500">${idx+1}</td>
-                <td class="p-2 border-b"><input type="text" class="w-full border rounded px-2 py-1 text-xs edit-pt-name" value="${ptName}"></td>
-                <td class="p-2 border-b"><input type="number" step="any" class="w-full border rounded px-2 py-1 text-xs edit-pt-e" value="${e}"></td>
-                <td class="p-2 border-b"><input type="number" step="any" class="w-full border rounded px-2 py-1 text-xs edit-pt-n" value="${n}"></td>
-                <td class="p-2 border-b">
-                    <select class="w-full border rounded px-2 py-1 text-xs edit-pt-z">
-                        <option value="47" ${z==47?'selected':''}>47N</option>
-                        <option value="48" ${z==48?'selected':''}>48N</option>
-                    </select>
-                </td>
-                <td class="p-2 border-b text-center"><button onclick="this.closest('tr').remove()" class="text-red-500 hover:bg-red-50 px-2 py-1 rounded">ลบ</button></td>
-            `;
-            tbody.appendChild(tr);
-        }
-        window.addEmptyRowToEdit = () => addRowToEditTable();
+        window.updatePointData = function(index, field, value) {
+            if(field === 'easting' || field === 'northing') value = parseFloat(value) || 0;
+            csvResults[index][field] = value;
+        };
 
-        window.saveProjectEdit = async function() {
-            if(!currentEditId) return;
-            const tbody = document.getElementById('editProjectTableBody');
-            const rows = tbody.querySelectorAll('tr');
-            let updatedData = [];
+        window.removePointFromEdit = function(index) {
+            csvResults.splice(index, 1);
+            renderEditTable();
+        };
+
+        window.addNewPointToEdit = function() {
+            csvResults.push({
+                name: `Point ${csvResults.length + 1}`,
+                zone: 47,
+                easting: 0,
+                northing: 0
+            });
+            renderEditTable();
+            const tbody = document.getElementById('editTableBody');
+            tbody.scrollTop = tbody.scrollHeight;
+        };
+
+        window.saveEditProject = async function() {
+            const newName = document.getElementById('editProjectName').value;
             
-            rows.forEach(tr => {
-                const name = tr.querySelector('.edit-pt-name').value;
-                const e = parseFloat(tr.querySelector('.edit-pt-e').value);
-                const n = parseFloat(tr.querySelector('.edit-pt-n').value);
-                const z = parseInt(tr.querySelector('.edit-pt-z').value);
-                
-                if(!isNaN(e) && !isNaN(n)) {
-                    const wgs = proj4(`EPSG:240${z}`, `EPSG:326${z}`, [e, n]);
-                    const latlng = proj4(`EPSG:240${z}`, 'EPSG:4326', [e, n]);
-                    updatedData.push({
-                        name, e_indian: e, n_indian: n, zone: z,
-                        e_wgs: wgs[0], n_wgs: wgs[1], lat: latlng[1], lng: latlng[0]
-                    });
-                }
+            // Recalculate WGS84 for all points
+            csvResults.forEach(p => {
+                const epsg = p.zone == 47 ? "EPSG:24047" : "EPSG:24048";
+                try {
+                    const wgsCoords = proj4(epsg, "EPSG:4326", [parseFloat(p.easting), parseFloat(p.northing)]);
+                    p.wgsLon = wgsCoords[0];
+                    p.wgsLat = wgsCoords[1];
+                } catch(e) {}
             });
             
-            const newName = document.getElementById('editProjectName').value || 'ไม่มีชื่อ';
             try {
-                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'projects', currentEditId), {
+                const docRef = doc(db, currentEditSourcePath, currentEditProjectId);
+                await updateDoc(docRef, {
                     name: newName,
-                    data: updatedData,
-                    pointsCount: updatedData.length
+                    data: csvResults,
+                    pointsCount: csvResults.length
                 });
                 
-                // ถ้านี่คือโปรเจคที่กำลังเปิดอยู่ ให้อัปเดตแผนที่ด้วย
-                const proj = savedProjects.find(p => p.id === currentEditId);
-                if(proj && currentProjectData.length > 0 && currentProjectData[0].name === proj.data[0]?.name) {
-                    currentProjectData = updatedData;
-                    drawMapPoints(currentProjectData);
-                }
-                
-                window.showAlert('บันทึกการแก้ไขเรียบร้อย!');
+                showAlert('สำเร็จ', 'อัปเดตข้อมูลโครงการเรียบร้อยแล้ว', 'success');
                 closeEditModal();
-                loadProjects();
-            } catch(err) {
-                console.error(err);
-                window.showAlert('เกิดข้อผิดพลาดในการบันทึก');
+                loadProjects(); 
+                
+                if(currentProjectName) {
+                    currentProjectName = newName;
+                    drawMap(csvResults);
+                }
+            } catch (e) {
+                showAlert('ข้อผิดพลาด', 'ไม่สามารถอัปเดตโครงการได้', 'error');
             }
         };
 
-        let isNavigating = false;
-        let navWatchId = null;
-        let navTargetLatLng = null;
-        let userLocMarker = null;
-        let targetProximityCircle = null;
-        let isAutoPanning = true;
+        const userIcon = L.divIcon({
+            className: 'user-nav-icon',
+            html: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="10" fill="#3B82F6" stroke="white" stroke-width="3"/>
+                    <circle cx="12" cy="12" r="4" fill="white"/>
+                   </svg>`,
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+        });
 
-        window.disableAutoPan = () => isAutoPanning = false;
-
-        window.startNavigation = function(lat, lng, name) {
-            if (!navigator.geolocation) { window.showAlert('อุปกรณ์ของคุณไม่รองรับ GPS'); return; }
-            map.closePopup();
-            
-            // ขยายเต็มจอ
-            isNavigating = true;
+        window.startNavigation = function(lat, lng) {
+            targetLatLng = L.latLng(lat, lng);
             document.getElementById('mapWrapper').classList.add('map-fullscreen');
-            setTimeout(() => { map.invalidateSize(); }, 300);
+            document.getElementById('navUI').classList.remove('hidden');
+            map.invalidateSize();
             
-            navTargetLatLng = L.latLng(lat, lng);
-            document.getElementById('navControlsContainer').classList.remove('hidden');
-            document.getElementById('distanceDisplay').classList.remove('hidden');
-            document.getElementById('distVal').innerText = 'ค้นหาตำแหน่ง...';
+            if (targetRadius) map.removeLayer(targetRadius);
             
-            isAutoPanning = true;
-            map.on('dragstart', disableAutoPan);
-
-            navWatchId = navigator.geolocation.watchPosition(updateNavigation, err => {
-                document.getElementById('distVal').innerText = 'รอ GPS';
-            }, { enableHighAccuracy: true, timeout: 10000 });
+            if ("geolocation" in navigator) {
+                watchId = navigator.geolocation.watchPosition(updateNavigation, navError, {
+                    enableHighAccuracy: true,
+                    maximumAge: 1000,
+                    timeout: 5000
+                });
+            } else {
+                showAlert('ข้อผิดพลาด', 'อุปกรณ์ไม่รองรับ GPS', 'error');
+            }
+            map.setView(targetLatLng, 18);
         };
 
         function updateNavigation(position) {
-            const userLatLng = L.latLng(position.coords.latitude, position.coords.longitude);
-            lastUserLatLng = userLatLng;
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const userLatLng = L.latLng(lat, lng);
             
-            const distance = map.distance(userLatLng, navTargetLatLng);
-            document.getElementById('distVal').innerText = distance.toFixed(1);
-            
-            if (!userLocMarker) {
-                // SVG ล็อกขนาดเพื่อแก้บั๊กภาพล้นจอ
-                const userIconSvg = `
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" style="width: 24px; height: 24px;">
-                        <circle cx="12" cy="12" r="10" fill="#2563eb" stroke="white" stroke-width="3" />
-                        <circle cx="12" cy="12" r="10" fill="#3b82f6" opacity="0.5">
-                            <animate attributeName="r" from="10" to="24" dur="1.5s" repeatCount="indefinite"/>
-                            <animate attributeName="opacity" from="0.5" to="0" dur="1.5s" repeatCount="indefinite"/>
-                        </circle>
-                    </svg>
-                `;
-                const userIcon = L.divIcon({ html: userIconSvg, className: 'user-nav-icon', iconSize: [24, 24], iconAnchor: [12, 12] });
-                userLocMarker = L.marker(userLatLng, { icon: userIcon, zIndexOffset: 1000 }).addTo(map);
+            if (userMarker) {
+                userMarker.setLatLng(userLatLng);
             } else {
-                userLocMarker.setLatLng(userLatLng);
+                userMarker = L.marker(userLatLng, {icon: userIcon, zIndexOffset: 1000}).addTo(map);
             }
+            
+            const distance = userLatLng.distanceTo(targetLatLng);
+            document.getElementById('navDistance').innerText = distance.toFixed(1) + " ม.";
             
             if (distance < 20) {
-                if (!targetProximityCircle) {
-                    targetProximityCircle = L.circle(navTargetLatLng, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.3, radius: 2 }).addTo(map);
+                if (!targetRadius) {
+                    targetRadius = L.circle(targetLatLng, {radius: 2, color: '#10B981', fillColor: '#10B981', fillOpacity: 0.5}).addTo(map);
+                    showAlert('ใกล้ถึงแล้ว!', 'ห่างจากเป้าหมายน้อยกว่า 20 เมตร', 'success');
                 }
-            } else if (targetProximityCircle) {
-                map.removeLayer(targetProximityCircle);
-                targetProximityCircle = null;
+            } else {
+                if (targetRadius) {
+                    map.removeLayer(targetRadius);
+                    targetRadius = null;
+                }
             }
-            
-            if (isAutoPanning) map.setView(userLatLng, Math.max(map.getZoom(), 18));
         }
+
+        function navError(err) {}
 
         window.stopNavigation = function() {
-            if (navWatchId !== null) navigator.geolocation.clearWatch(navWatchId);
-            if (userLocMarker) { map.removeLayer(userLocMarker); userLocMarker = null; }
-            if (targetProximityCircle) { map.removeLayer(targetProximityCircle); targetProximityCircle = null; }
-            
-            map.off('dragstart', disableAutoPan);
+            if (watchId) navigator.geolocation.clearWatch(watchId);
+            if (userMarker) {
+                map.removeLayer(userMarker);
+                userMarker = null;
+            }
+            if (targetRadius) {
+                map.removeLayer(targetRadius);
+                targetRadius = null;
+            }
             document.getElementById('mapWrapper').classList.remove('map-fullscreen');
-            setTimeout(() => { map.invalidateSize(); }, 300);
-            
-            document.getElementById('navControlsContainer').classList.add('hidden');
-            document.getElementById('distanceDisplay').classList.add('hidden');
-            isNavigating = false;
+            document.getElementById('navUI').classList.add('hidden');
+            setTimeout(() => {
+                map.invalidateSize();
+                if(csvResults && csvResults.length > 0) map.fitBounds(markersGroup.getBounds(), {padding: [30, 30]});
+            }, 300);
         };
 
-        window.saveCurrentLocation = function() {
-            if (!lastUserLatLng) { window.showAlert("ยังหาสัญญาณ GPS ของคุณไม่พบครับ"); return; }
-            const lat = lastUserLatLng.lat;
-            const lng = lastUserLatLng.lng;
+        window.saveCurrentGPS = function() {
+            if(!userMarker) {
+                showAlert('รอสักครู่', 'ยังไม่พบตำแหน่ง GPS กำลังค้นหาสัญญาณ...', 'error');
+                return;
+            }
+            
+            const lat = userMarker.getLatLng().lat;
+            const lng = userMarker.getLatLng().lng;
             const zone = lng < 102 ? 47 : 48;
+            const epsg = zone === 47 ? "EPSG:24047" : "EPSG:24048";
+            const indianCoords = proj4("EPSG:4326", epsg, [lng, lat]);
             
-            const indianUtm = proj4('EPSG:4326', `EPSG:240${zone}`, [lng, lat]);
+            const newPoint = {
+                name: `GPS Point ${csvResults.length + 1}`,
+                easting: indianCoords[0].toFixed(3),
+                northing: indianCoords[1].toFixed(3),
+                zone: zone,
+                wgsLat: lat,
+                wgsLon: lng
+            };
             
-            document.getElementById('addPointEasting').value = indianUtm[0].toFixed(3);
-            document.getElementById('addPointNorthing').value = indianUtm[1].toFixed(3);
-            document.getElementById('addPointZone').value = zone;
-            document.getElementById('addPointName').value = `GPS_${Math.floor(Math.random()*1000)}`;
-            document.getElementById('addPointModal').classList.remove('hidden');
+            csvResults.push(newPoint);
+            drawMap(csvResults, false); // ไม่บังคับซูมออก
+            showAlert('สำเร็จ', `เพิ่มจุด GPS ปัจจุบันลงในโครงการแล้ว`, 'success');
+            document.getElementById('saveProjectBtn').classList.remove('hidden');
         };
-
-        // Bootstrap App
-        window.onload = function() {
-            initMap();
-            initAuth();
-        }
     </script>
 </body>
 </html>
