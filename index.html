@@ -545,6 +545,7 @@
         }
 
         function processCSV(data) {
+            window.currentLoadedProject = null; // รีเซ็ตเมื่อโหลดไฟล์ใหม่ (ไม่ใช่การเปิดโปรเจกต์เดิม)
             csvResults = [];
             markersGroup.clearLayers();
             if(polygonLayer) map.removeLayer(polygonLayer);
@@ -712,6 +713,7 @@
         };
 
         window.loadProjectToMap = function(proj) {
+            window.currentLoadedProject = proj; // บันทึกสถานะว่ากำลังเปิดโปรเจกต์ไหนอยู่สำหรับการ Auto-save
             csvResults = proj.parsedData || [];
             markersGroup.clearLayers();
             if(polygonLayer) map.removeLayer(polygonLayer);
@@ -799,7 +801,7 @@
             window.promptAddMapPoint(lastKnownGpsLatLng.lat, lastKnownGpsLatLng.lng, 'auto');
         };
 
-        window.promptAddMapPoint = function(wgsLat, wgsLng, roughZone = '47') {
+        window.promptAddMapPoint = async function(wgsLat, wgsLng, roughZone = '47') {
             const pointName = prompt("ตั้งชื่อจุดพิกัด:", `Point_${csvResults.length + 1}`);
             if(!pointName) return;
             const zoneToUse = (roughZone === 'auto') ? ((wgsLng < 102) ? '47' : '48') : roughZone;
@@ -822,7 +824,32 @@
                 `);
                 markersGroup.addLayer(m);
                 renderMapAndArea();
-                showToast("เพิ่มจุดใหม่เรียบร้อยแล้ว");
+                
+                // --- ระบบ Auto-Save เริ่มทำงานตรงนี้ ---
+                if (window.currentLoadedProject) {
+                    try {
+                        const projectDocRef = doc(db, window.currentLoadedProject._sourcePath, window.currentLoadedProject.id);
+                        await updateDoc(projectDocRef, { 
+                            data: csvResults // เขียนทับ Array เดิมด้วย Array ใหม่ที่เพิ่มจุดเข้าไปแล้ว
+                        });
+                        
+                        showToast("เพิ่มและบันทึกพิกัดอัตโนมัติแล้ว");
+                        
+                        // รีเฟรชรายการโปรเจกต์เบื้องหลังเพื่อให้อัปเดตตัวเลขจำนวนพิกัด
+                        if(typeof window.loadProjects === 'function') {
+                             window.loadProjects(); 
+                        }
+                    } catch(err) {
+                        customAlert("ผิดพลาด", "ไม่สามารถบันทึกอัตโนมัติได้: " + err.message);
+                    }
+                } else {
+                    // กรณีสร้างจุดใหม่ลอยๆ ยังไม่ได้ตั้งชื่อโปรเจกต์
+                    showToast("เพิ่มจุดสำเร็จ (อย่าลืมกดบันทึกเป็นโครงการ)");
+                    document.getElementById('actionButtons').classList.remove('hidden');
+                    document.getElementById('actionButtons').classList.add('flex');
+                }
+                // --- จบระบบ Auto-Save ---
+
                 map.closePopup();
             } catch(e) { customAlert("ผิดพลาด", e.message); }
         };
