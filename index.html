@@ -770,6 +770,16 @@
             document.getElementById('distanceDisplay').classList.add('flex');
             isAutoPanning = true;
             
+            // วาดวงกลมรัศมี 1 เมตร รอบเป้าหมาย
+            if (targetProximityCircle) map.removeLayer(targetProximityCircle);
+            targetProximityCircle = L.circle(navTargetLatLng, {
+                radius: 1, // รัศมี 1 เมตร
+                color: '#3b82f6', // สีฟ้า
+                fillColor: '#3b82f6',
+                fillOpacity: 0.3,
+                weight: 2
+            }).addTo(map);
+            
             navWatchId = navigator.geolocation.watchPosition(updateNav, (e) => console.warn(e), { enableHighAccuracy: true });
             map.on('dragstart', () => { isAutoPanning = false; });
         };
@@ -778,18 +788,36 @@
             const userLatLng = L.latLng(position.coords.latitude, position.coords.longitude);
             lastKnownGpsLatLng = userLatLng;
             const distance = map.distance(userLatLng, navTargetLatLng);
-            document.getElementById('distVal').innerText = distance.toLocaleString(undefined, {maximumFractionDigits: 1});
+            
+            const distDisplay = document.getElementById('distVal');
+            distDisplay.innerText = distance.toLocaleString(undefined, {maximumFractionDigits: 1});
+            
+            // เปลี่ยนสีวงกลมและตัวเลขเมื่อเข้าใกล้ระยะ 1 เมตร
+            if (targetProximityCircle) {
+                if (distance <= 1.0) {
+                    targetProximityCircle.setStyle({ color: '#22c55e', fillColor: '#22c55e' }); // เปลี่ยนเป็นสีเขียว
+                    distDisplay.classList.replace('text-brand-600', 'text-emerald-500');
+                } else {
+                    targetProximityCircle.setStyle({ color: '#3b82f6', fillColor: '#3b82f6' }); // สีฟ้าเหมือนเดิม
+                    distDisplay.classList.replace('text-emerald-500', 'text-brand-600');
+                }
+            }
             
             if (!userLocMarker) userLocMarker = L.marker(userLatLng, {icon: userIcon, zIndexOffset: 1000}).addTo(map);
             else userLocMarker.setLatLng(userLatLng);
             
-            if (isAutoPanning) map.fitBounds(L.latLngBounds([userLatLng, navTargetLatLng]), { padding: [50, 50], maxZoom: 18 });
+            if (isAutoPanning) map.fitBounds(L.latLngBounds([userLatLng, navTargetLatLng]), { padding: [50, 50], maxZoom: 20 });
         }
 
         window.stopNavigation = function() {
             if (navWatchId) navigator.geolocation.clearWatch(navWatchId);
             navWatchId = null;
             if (userLocMarker) { map.removeLayer(userLocMarker); userLocMarker = null; }
+            if (targetProximityCircle) { map.removeLayer(targetProximityCircle); targetProximityCircle = null; }
+            
+            // รีเซ็ตสีตัวเลขระยะทางกลับเป็นสีฟ้า
+            document.getElementById('distVal').classList.replace('text-emerald-500', 'text-brand-600');
+            
             document.getElementById('mapWrapper').classList.remove('map-fullscreen');
             setTimeout(() => { map.invalidateSize(); }, 300);
             document.getElementById('navControl').classList.replace('flex', 'hidden');
